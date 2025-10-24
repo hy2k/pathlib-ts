@@ -1,0 +1,29 @@
+.github/
+
+# Node/TypeScript
+node_modules/
+dist/
+build/
+*.log
+*.tsbuildinfo
+*.d.ts.map
+
+# Package manager
+package-lock.json
+yarn.lock
+.pnpm-lock.yaml
+
+# Env files
+.env*
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Tests & coverage
+coverage/
+
+# Misc
+*.tmp
+*.swp

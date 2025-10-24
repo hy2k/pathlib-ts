@@ -1,0 +1,8 @@
+.vscode/
+.github/
+*.log
+coverage/
+*.tsbuildinfo
+**/*.test.ts
+**/*.spec.ts
+**/tests/**
