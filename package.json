@@ -7,9 +7,11 @@
 	"license": "PSF-2.0",
 	"scripts": {
 		"build": "npm run clean && tsc",
+		"prepare": "npm run build",
 		"fix": "biome check --fix",
 		"clean": "rm -rf dist && tsc --build --clean"
 	},
+	"files": ["dist", "LICENSE", "README.md"],
 	"devDependencies": {
 		"@biomejs/biome": "2.2.7",
 		"@types/bun": "^1.3",
