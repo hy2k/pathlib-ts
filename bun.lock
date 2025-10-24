@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "path-lib",
+      "name": "pathlib-ts",
       "devDependencies": {
         "@biomejs/biome": "2.2.7",
         "@types/bun": "^1.3",

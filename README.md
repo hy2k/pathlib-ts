@@ -1,8 +1,8 @@
-# path-lib
+# pathlib-ts
 
 Pathlib for TypeScript — a pragmatic, async-first port of CPython's `pathlib`.
 
-path-lib brings the convenience and expressiveness of Python's `pathlib` to the JavaScript/TypeScript ecosystem. It provides PurePath classes for pure path manipulation and Path classes for filesystem operations, with async-first APIs plus synchronous counterparts.
+pathlib-ts brings the convenience and expressiveness of Python's `pathlib` to the JavaScript/TypeScript ecosystem. It provides PurePath classes for pure path manipulation and Path classes for filesystem operations, with async-first APIs plus synchronous counterparts.
 
 ## Why this project exists
 
@@ -16,10 +16,10 @@ path-lib brings the convenience and expressiveness of Python's `pathlib` to the 
 Basic example
 
 ```ts
-import { Path } from "path-lib";
+import { Path } from "pathlib-ts";
 
 const p = new Path("./hello.txt");
-await p.writeText("Hello from path-lib\n");
+await p.writeText("Hello from pathlib-ts\n");
 console.log(await p.readText());
 
 const dir = new Path("./");

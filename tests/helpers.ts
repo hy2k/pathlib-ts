@@ -8,7 +8,7 @@ export type Sandbox = {
 	canSymlink: boolean;
 };
 
-export function makeSandbox(prefix = "path-lib-"): Sandbox {
+export function makeSandbox(prefix = "pathlib-ts-"): Sandbox {
 	const base = fs.mkdtempSync(nodepath.join(os.tmpdir(), prefix));
 	const cleanup = () => {
 		try {
