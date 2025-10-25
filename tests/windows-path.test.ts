@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PureWindowsPath } from "../src/pathlib.js";
+import { PureWindowsPath } from "../src/index.js";
 
 // These tests are platform-agnostic by constructing Windows paths via PureWindowsPath
 

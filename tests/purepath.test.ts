@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import nodepath from "node:path";
-import { PurePath, PurePosixPath, PureWindowsPath } from "../src/pathlib.js";
+import { PurePath, PurePosixPath, PureWindowsPath } from "../src/index.js";
 
 const isWindows = nodepath.sep === "\\";
 
