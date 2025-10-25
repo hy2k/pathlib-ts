@@ -1,0 +1,7 @@
+[tools]
+bun = "latest"
+deno = "latest"
+node = "lts"
+
+[env]
+DENO_NO_PACKAGE_JSON = "1"
