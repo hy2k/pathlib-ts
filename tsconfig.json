@@ -12,6 +12,8 @@
 		"moduleResolution": "node16",
 		"verbatimModuleSyntax": true,
 		"noEmit": false,
+		"declaration": true,
+		"declarationDir": "dist",
 		"rootDir": "src",
 		"outDir": "dist",
 
