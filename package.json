@@ -14,11 +14,12 @@
 		}
 	},
 	"scripts": {
-		"build": "npm run clean && tsc",
+		"build": "bun run clean && tsc",
 		"e2e": "./tests/e2e/run-e2e-all.sh",
-		"prepare": "npm run build",
 		"fix": "biome check --fix",
-		"clean": "rm -rf dist && tsc --build --clean"
+		"clean": "rm -rf dist && tsc --build --clean",
+		"release:patch": "bun ./scripts/release-patch.ts",
+		"prepublishOnly": "bun run build"
 	},
 	"files": [
 		"dist",
