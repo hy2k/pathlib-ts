@@ -1,9 +1,12 @@
 #!/usr/bin/env -S node --test
+
+// @ts-check
+
 import assert from "node:assert/strict";
 import os from "node:os";
 import nodepath from "node:path";
 import test from "node:test";
-import { Path, UnsupportedOperation } from "../../dist/index.js";
+import { Path } from "../../dist/index.js";
 
 test("node smoke: write/read text", async () => {
 	const tmpBase = nodepath.join(
@@ -50,21 +53,10 @@ test("node smoke: bytes/stream/rglob", async () => {
 	}
 	assert.ok(seen, "should read at least one chunk from stream");
 
-	// rglob: newer fs APIs (glob) may not be available in some runtimes; library may
-	// fall back or throw UnsupportedOperation. Accept either.
-	try {
-		const matches = await dir.rglob("*.txt");
-		assert.ok(Array.isArray(matches));
-	} catch (err) {
-		if (
-			err instanceof UnsupportedOperation ||
-			err?.name === "UnsupportedOperation"
-		) {
-			// acceptable: runtime does not support glob APIs
-		} else {
-			throw err;
-		}
-	}
+	// rglob
+	const matches = await dir.rglob("*.txt");
+	assert.ok(Array.isArray(matches));
+	assert.ok(matches.length > 0, "rglob should find at least one .txt file");
 
 	// cleanup
 	await bytesFile.unlink();

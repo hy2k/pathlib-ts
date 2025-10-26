@@ -1,8 +1,13 @@
 #!/usr/bin/env -S deno test --allow-read --allow-write --allow-env
-import { assertEquals } from "https://deno.land/std@0.203.0/assert/mod.ts";
+import {
+	assertEquals,
+	assertGreater,
+	assertStringIncludes,
+} from "jsr:@std/assert@^1";
+
 import os from "node:os";
 import nodepath from "node:path";
-import { Path, UnsupportedOperation } from "../../dist/index.js";
+import { Path } from "../../dist/index.js";
 
 const test = Deno.test;
 
@@ -38,35 +43,26 @@ test("deno smoke: bytes/stream/rglob", async () => {
 	const readBuf = await bytesFile.readBytes();
 	assertEquals(Array.from(readBuf), Array.from(arr));
 
-	// avoid streaming (some runtimes leak file handles for partial consumption)
-	const textFile = new Path(nodepath.join(tmpBase, "stream.txt"));
-	await textFile.writeText("stream-data-abc");
-	const text = await textFile.readText();
-	if (!text.includes("stream-data-abc"))
-		throw new Error("expected stream data present");
-
-	// rglob - accept UnsupportedOperation
-	try {
-		const matches = await dir.rglob("*.txt");
-		if (!Array.isArray(matches)) throw new Error("rglob should return array");
-	} catch (err) {
-		// err is unknown; check safely for UnsupportedOperation by instance or name
-		if (err instanceof UnsupportedOperation) {
-			// ok
-		} else if (err && typeof err === "object") {
-			const name = (err as Record<string, unknown>).name;
-			if (name === "UnsupportedOperation") {
-				// ok
-			} else {
-				throw err;
-			}
-		} else {
-			throw err;
-		}
+	// stream test: fully consume and then close/destroy the stream
+	const streamFile = new Path(nodepath.join(tmpBase, "stream.txt"));
+	await streamFile.writeText("stream-some-text");
+	const rs = await streamFile.open();
+	let collected = "";
+	for await (const chunk of rs) {
+		if (typeof chunk === "string") collected += chunk;
+		else if (chunk instanceof Uint8Array)
+			collected += new TextDecoder().decode(chunk);
+		else collected += String(chunk ?? "");
 	}
+	assertStringIncludes(collected, "stream-some-text");
+
+	// rglob
+	const matches = await dir.rglob("*.txt");
+	if (!Array.isArray(matches)) throw new Error("rglob should return array");
+	assertGreater(matches.length, 0);
 
 	// cleanup
 	await bytesFile.unlink();
-	await textFile.unlink();
+	await streamFile.unlink();
 	await dir.rmdir();
 });

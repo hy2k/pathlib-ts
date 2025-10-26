@@ -1,0 +1,3 @@
+{
+	"deno.enablePaths": ["tests/e2e/run-e2e-deno.ts"]
+}
