@@ -7,6 +7,7 @@ import {
 	copyInfo,
 	copyInfoSync,
 	DirEntryInfo,
+	ErrnoError,
 	ensureDifferentFiles,
 	ensureDifferentFilesSync,
 	ensureDistinctPaths,
@@ -102,6 +103,27 @@ describe("copy helpers", () => {
 		fs.closeSync(sfd);
 		fs.closeSync(dfd);
 		expect(fs.readFileSync(dst, "utf8")).toBe("fddata");
+	});
+
+	test("copyFileObjSync unsupported stream types throws", () => {
+		// Provide objects that are neither path strings nor have .fd numbers
+		const src = {} as unknown as NodeJS.ReadableStream;
+		const dst = {} as unknown as NodeJS.WritableStream;
+		try {
+			copyFileObjSync(src, dst);
+			throw new Error("expected copyFileObjSync to throw");
+		} catch (err) {
+			// Ensure the thrown error is our typed ErrnoError with code EINVAL
+			expect(err).toBeInstanceOf(ErrnoError);
+			const e = err as {
+				code?: string;
+				path?: string;
+				dest?: string;
+			};
+			expect(e.code).toBe("EINVAL");
+			expect(e.path).toBe(String(src));
+			expect(e.dest).toBe(String(dst));
+		}
 	});
 
 	test("copyInfoSync best-effort metadata copy", () => {

@@ -1,4 +1,4 @@
-/*
+/**
  * TypeScript port of relevant parts of CPython's pathlib/_os.py.
  * Adapted to use Node.js builtins only (node:fs, node:path).
  *
@@ -27,21 +27,16 @@
  * required (per your instruction). If you later want these added we can
  * implement them as optional, platform-specific modules with explicit
  * feature-detection.
+ *
+ * @see https://github.com/python/cpython/blob/3.14/Lib/pathlib/_os.py
  */
 
 import fs from "node:fs";
 import nodepath from "node:path";
+import { ErrnoError } from "./errors.js";
 import { toPromise } from "./util.js";
 
-class ErrnoError extends Error {
-	code?: string | number;
-	path?: string;
-	dest?: string;
-	constructor(message: string) {
-		super(message);
-		this.name = "ErrnoError";
-	}
-}
+export { ErrnoError } from "./errors.js";
 
 /**
  * Copy data from file-like object `source_f` to file-like object `target_f`.
@@ -99,9 +94,10 @@ export function copyFileObjSync(
 		return;
 	}
 
-	throw new Error(
-		"copyFileObjSync: unsupported stream types for synchronous copy",
-	);
+	throw new ErrnoError("copyFileObjSync: unsupported stream types", "EINVAL", {
+		path: source,
+		dest: target,
+	});
 }
 
 /**
@@ -145,18 +141,16 @@ export function ensureDistinctPaths(source: string, target: string): void {
 	const s = nodepath.resolve(source);
 	const t = nodepath.resolve(target);
 	if (s === t) {
-		const e = new ErrnoError("Source and target are the same path");
-		(e as ErrnoError & { code?: string }).code = "EINVAL";
-		e.path = s;
-		e.dest = t;
-		throw e;
+		throw new ErrnoError("Source and target are the same path", "EINVAL", {
+			path: s,
+			dest: t,
+		});
 	}
 	if (t.startsWith(s + nodepath.sep)) {
-		const e = new ErrnoError("Source path is a parent of target path");
-		(e as ErrnoError & { code?: string }).code = "EINVAL";
-		e.path = s;
-		e.dest = t;
-		throw e;
+		throw new ErrnoError("Source path is a parent of target path", "EINVAL", {
+			path: s,
+			dest: t,
+		});
 	}
 }
 
@@ -202,11 +196,10 @@ export function ensureDifferentFilesSync(
 		const tId = getFileIdSync(target);
 		if (sId !== undefined && tId !== undefined) {
 			if (sId === tId) {
-				const e = new ErrnoError("Source and target are the same file");
-				(e as ErrnoError & { code?: string }).code = "EINVAL";
-				e.path = String(source);
-				e.dest = String(target);
-				throw e;
+				throw new ErrnoError("Source and target are the same file", "EINVAL", {
+					path: source,
+					dest: target,
+				});
 			}
 			return;
 		}
@@ -214,19 +207,17 @@ export function ensureDifferentFilesSync(
 		const sstat = fs.statSync(String(source));
 		const tstat = fs.statSync(String(target));
 		if (sstat.dev === tstat.dev && sstat.ino === tstat.ino) {
-			const e = new ErrnoError("Source and target are the same file");
-			(e as ErrnoError & { code?: string }).code = "EINVAL";
-			e.path = String(source);
-			e.dest = String(target);
-			throw e;
+			throw new ErrnoError("Source and target are the same file", "EINVAL", {
+				path: source,
+				dest: target,
+			});
 		}
 	} catch (_err) {
 		if (String(source) === String(target)) {
-			const e = new ErrnoError("Source and target are the same file");
-			(e as ErrnoError & { code?: string }).code = "EINVAL";
-			e.path = String(source);
-			e.dest = String(target);
-			throw e;
+			throw new ErrnoError("Source and target are the same file", "EINVAL", {
+				path: source,
+				dest: target,
+			});
 		}
 	}
 }
