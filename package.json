@@ -1,9 +1,9 @@
 {
 	"name": "pathlib-ts",
 	"type": "module",
-	"author": {
-		"name": "hy2k"
-	},
+	"author": "hy2k",
+	"description": "Async-first TypeScript port of CPython's pathlib",
+	"repository": "https://github.com/hy2k/pathlib-ts",
 	"license": "PSF-2.0",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
