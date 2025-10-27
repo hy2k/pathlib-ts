@@ -78,10 +78,89 @@ describe("Path read (sync)", () => {
 		expect(Boolean(s)).toBeTrue();
 	});
 
-	test("iterdirSync returns entries", () => {
-		const base = new Path(sandbox.root);
-		const entries = base.iterdirSync();
-		expect(entries.length).toBeGreaterThan(0);
+	describe("iterdir option (sync)", () => {
+		test("iterdirSync returns Path instances by default", () => {
+			const base = new Path(sandbox.root);
+			const entries = base.iterdirSync();
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirSync treats withFileTypes=false as Path[]", () => {
+			const base = new Path(sandbox.root);
+			const entries = base.iterdirSync({ extra: { withFileTypes: false } });
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirSync with withFileTypes=true returns Dirent[]", () => {
+			const base = new Path(sandbox.root);
+			const entries = base.iterdirSync({ extra: { withFileTypes: true } });
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof fs.Dirent)).toBeTrue();
+			const names = entries.map((entry) => entry.name).sort();
+			expect(names).toContain("fileA");
+		});
+
+		test("iterdirSync with withFileTypes=true throws when Dirent unsupported", () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				expect(() =>
+					base.iterdirSync({ extra: { withFileTypes: true } }),
+				).toThrow(UnsupportedOperation);
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
+
+		test("iterdirStreamSync yields Path instances by default", () => {
+			const base = new Path(sandbox.root);
+			const entries = Array.from(base.iterdirStreamSync());
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirStreamSync treats withFileTypes=false as Path", () => {
+			const base = new Path(sandbox.root);
+			const entries = Array.from(
+				base.iterdirStreamSync({ extra: { withFileTypes: false } }),
+			);
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirStreamSync with withFileTypes=true yields Dirent entries", () => {
+			const base = new Path(sandbox.root);
+			const entries = Array.from(
+				base.iterdirStreamSync({ extra: { withFileTypes: true } }),
+			);
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof fs.Dirent)).toBeTrue();
+		});
+
+		test("iterdirStreamSync with withFileTypes=true throws when Dirent unsupported", () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				const iterator = base
+					.iterdirStreamSync({
+						extra: { withFileTypes: true },
+					})
+					[Symbol.iterator]();
+				expect(() => iterator.next()).toThrow(UnsupportedOperation);
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
 	});
 
 	test("globSync finds txt files", () => {
@@ -243,10 +322,119 @@ describe("Path read (async)", () => {
 		});
 	});
 
-	test("iterdir() returns entries", async () => {
-		const base = new Path(sandbox.root);
-		const entries = await base.iterdir();
-		expect(entries.length).toBeGreaterThan(0);
+	describe("iterdir option (async)", () => {
+		async function collectAsync<T>(
+			iterable: AsyncIterable<T>,
+			limit = Infinity,
+		) {
+			const results: T[] = [];
+			for await (const item of iterable) {
+				results.push(item);
+				if (results.length >= limit) {
+					break;
+				}
+			}
+			return results;
+		}
+
+		test("iterdir() returns Path[] by default", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await base.iterdir();
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdir() respects withFileTypes=false", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await base.iterdir({ extra: { withFileTypes: false } });
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterDir() still returns Path[] even without Dirent support", async () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				const entries = await base.iterdir({ extra: { withFileTypes: false } });
+				expect(entries.length).toBeGreaterThan(0);
+				expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
+
+		test("iterdir() returns Dirent[] with withFileTypes=true", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await base.iterdir({ extra: { withFileTypes: true } });
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof fs.Dirent)).toBeTrue();
+		});
+
+		test("iterdir() with withFileTypes=true rejects when Dirent unsupported", async () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				expect(
+					base.iterdir({ extra: { withFileTypes: true } }),
+				).rejects.toThrow(UnsupportedOperation);
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
+
+		test("iterdirStream yields Path instances by default", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await collectAsync(base.iterdirStream(), 3);
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirStream respects withFileTypes=false", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await collectAsync(
+				base.iterdirStream({ extra: { withFileTypes: false } }),
+				3,
+			);
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof Path)).toBeTrue();
+		});
+
+		test("iterdirStream yields Dirent entries with withFileTypes=true", async () => {
+			const base = new Path(sandbox.root);
+			const entries = await collectAsync(
+				base.iterdirStream({ extra: { withFileTypes: true } }),
+				3,
+			);
+			expect(entries.length).toBeGreaterThan(0);
+			expect(entries.every((entry) => entry instanceof fs.Dirent)).toBeTrue();
+		});
+
+		test("iterdirStream with withFileTypes=true rejects when Dirent unsupported", async () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				const iterable = base.iterdirStream({
+					extra: { withFileTypes: true },
+				});
+				expect(iterable[Symbol.asyncIterator]().next()).rejects.toThrow(
+					UnsupportedOperation,
+				);
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
 	});
 
 	test("glob() finds txt files", async () => {

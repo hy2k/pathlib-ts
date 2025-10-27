@@ -1,4 +1,4 @@
-import fs, { type Dirent, type Stats } from "node:fs";
+import fs, { type Dir, type Dirent, type Stats } from "node:fs";
 import nodeos from "node:os";
 import nodepath from "node:path";
 import {
@@ -396,19 +396,29 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 
 	/**
 	 * Synchronous variant of {@link Path.iterdir}.
-	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.iterdir
 	 */
-	iterdirSync(): Path[] {
+	iterdirSync(options?: { extra?: { withFileTypes?: false } }): Path[];
+	iterdirSync(options: { extra?: { withFileTypes: true } }): Dirent[];
+	iterdirSync(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): Path[] | Dirent[] {
 		const root = this.toString();
-		const entries = fs.readdirSync(root, { withFileTypes: true });
-		return entries.map((entry: Dirent) => {
-			const childPath =
-				root === "." ? entry.name : nodepath.join(root, entry.name);
-			const child = this.withSegments(childPath) as Path;
-			child.infoCache = new DirEntryInfo(entry, root);
-			return child;
-		});
+		const withFileTypes = options?.extra?.withFileTypes === true;
+
+		if (withFileTypes) {
+			Path.ensureDirentSupport();
+			return fs.readdirSync(root, { withFileTypes: true });
+		}
+
+		if (Path.hasDirentSupport()) {
+			const entries = fs.readdirSync(root, { withFileTypes: true });
+			return entries.map((entry) => this.createChildFromDirent(entry, root));
+		}
+
+		const dirnames = fs.readdirSync(root);
+		return dirnames.map((dirname) =>
+			this.createChildFromDirname(dirname, root),
+		);
 	}
 
 	/**
@@ -417,9 +427,273 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * Docstring copied from CPython 3.14 pathlib.Path.iterdir.
 	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.iterdir
+	 *
+	 * ---
+	 *
+	 * ### Dirent parity
+	 *
+	 * Pass `extra.withFileTypes: true` to mimic Node's `fs.readdir` behaviour and
+	 * retrieve native {@link Dirent} objects. When omitted or set to `false`, the
+	 * method returns `Path` instances. The runtime must support
+	 * `fs.readdir(..., { withFileTypes: true })`; otherwise an
+	 * {@link UnsupportedOperation} error is thrown.
 	 */
-	iterdir(): Promise<Path[]> {
-		return toPromise(() => this.iterdirSync());
+	iterdir(options?: { extra?: { withFileTypes?: false } }): Promise<Path[]>;
+	iterdir(options: { extra?: { withFileTypes: true } }): Promise<Dirent[]>;
+	async iterdir(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): Promise<Path[] | Dirent[]> {
+		const root = this.toString();
+		const withFileTypes = options?.extra?.withFileTypes === true;
+		const fsPromises = fs.promises;
+
+		if (!fsPromises || typeof fsPromises.readdir !== "function") {
+			if (withFileTypes) {
+				Path.ensureDirentSupport();
+				return Promise.resolve(fs.readdirSync(root, { withFileTypes: true }));
+			}
+
+			if (Path.hasDirentSupport()) {
+				const entries = fs.readdirSync(root, { withFileTypes: true });
+				return Promise.resolve(
+					entries.map((entry) => this.createChildFromDirent(entry, root)),
+				);
+			}
+
+			const dirnames = fs.readdirSync(root);
+			return Promise.resolve(
+				dirnames.map((dirname) => this.createChildFromDirname(dirname, root)),
+			);
+		}
+
+		if (withFileTypes) {
+			Path.ensureDirentSupport();
+			return fsPromises.readdir(root, { withFileTypes: true });
+		}
+
+		if (Path.hasDirentSupport()) {
+			const entries = await fsPromises.readdir(root, {
+				withFileTypes: true,
+			});
+			return entries.map((entry) => this.createChildFromDirent(entry, root));
+		}
+
+		const dirnames = await fsPromises.readdir(root);
+		return dirnames.map((dirname) =>
+			this.createChildFromDirname(dirname, root),
+		);
+	}
+
+	/**
+	 * Stream directory entries asynchronously without materialising the entire
+	 * directory listing.
+	 *
+	 * ---
+	 *
+	 * ### Streaming options
+	 *
+	 * Accepts the same `extra.withFileTypes` option as {@link Path.iterdir}:
+	 *
+	 * - default / `false` — yields `Path` instances lazily.
+	 * - `true` — yields native {@link Dirent} objects when the runtime supports
+	 *   `fs.readdir(..., { withFileTypes: true })`, otherwise throws
+	 *   {@link UnsupportedOperation}.
+	 *
+	 * When available, `fs.opendir` is used to minimise memory usage; otherwise the
+	 * implementation falls back to `fs.readdir`.
+	 */
+	iterdirStream(options?: {
+		extra?: { withFileTypes?: false };
+	}): AsyncIterable<Path>;
+	iterdirStream(options: {
+		extra?: { withFileTypes: true };
+	}): AsyncIterable<Dirent>;
+	iterdirStream(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): AsyncIterable<Path | Dirent>;
+	async *iterdirStream(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): AsyncIterable<Path | Dirent> {
+		const root = this.toString();
+		const withFileTypes = options?.extra?.withFileTypes === true;
+		const fsPromises = fs.promises;
+
+		if (withFileTypes) {
+			Path.ensureDirentSupport();
+		}
+
+		if (!fsPromises || typeof fsPromises.readdir !== "function") {
+			for (const entry of this.iterdirStreamSync(options)) {
+				yield entry;
+			}
+			return;
+		}
+
+		const supportsDirent = Path.hasDirentSupport();
+
+		if (withFileTypes) {
+			if (typeof fsPromises.opendir === "function") {
+				let dirHandle: Dir | undefined;
+				try {
+					dirHandle = await fsPromises.opendir(root);
+					for await (const entry of dirHandle) {
+						yield entry;
+					}
+				} finally {
+					if (dirHandle) {
+						try {
+							await dirHandle.close();
+						} catch {
+							// ignore close errors
+						}
+					}
+				}
+				return;
+			}
+
+			const entries = await fsPromises.readdir(root, {
+				withFileTypes: true,
+			});
+			for (const entry of entries) {
+				yield entry;
+			}
+			return;
+		}
+
+		if (supportsDirent && typeof fsPromises.opendir === "function") {
+			let dirHandle: Dir | undefined;
+			try {
+				dirHandle = await fsPromises.opendir(root);
+				for await (const entry of dirHandle) {
+					yield this.createChildFromDirent(entry, root);
+				}
+			} finally {
+				if (dirHandle) {
+					try {
+						await dirHandle.close();
+					} catch {
+						// ignore close errors
+					}
+				}
+			}
+			return;
+		}
+
+		if (supportsDirent) {
+			const entries = await fsPromises.readdir(root, {
+				withFileTypes: true,
+			});
+			for (const entry of entries) {
+				yield this.createChildFromDirent(entry, root);
+			}
+			return;
+		}
+
+		const dirnames = await fsPromises.readdir(root);
+		for (const dirname of dirnames) {
+			yield this.createChildFromDirname(dirname, root);
+		}
+	}
+
+	/**
+	 * Synchronous counterpart of {@link Path.iterdirStream}. Uses `fs.opendirSync`
+	 * when available and falls back to `fs.readdirSync` otherwise.
+	 */
+	iterdirStreamSync(options?: {
+		extra?: { withFileTypes?: false };
+	}): Iterable<Path>;
+	iterdirStreamSync(options: {
+		extra?: { withFileTypes: true };
+	}): Iterable<Dirent>;
+	iterdirStreamSync(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): Iterable<Path | Dirent>;
+	*iterdirStreamSync(options?: {
+		extra?: { withFileTypes?: boolean };
+	}): Iterable<Path | Dirent> {
+		const root = this.toString();
+		const withFileTypes = options?.extra?.withFileTypes === true;
+		const supportsDirent = Path.hasDirentSupport();
+
+		if (withFileTypes) {
+			Path.ensureDirentSupport();
+		}
+
+		if (typeof fs.opendirSync === "function") {
+			const dirHandle = fs.opendirSync(root);
+			try {
+				while (true) {
+					const entry = dirHandle.readSync();
+					if (!entry) {
+						break;
+					}
+					if (withFileTypes) {
+						yield entry;
+					} else if (supportsDirent) {
+						yield this.createChildFromDirent(entry, root);
+					} else {
+						yield this.createChildFromDirname(entry.name, root);
+					}
+				}
+			} finally {
+				try {
+					dirHandle.closeSync();
+				} catch {
+					// ignore close errors
+				}
+			}
+			return;
+		}
+
+		if (withFileTypes) {
+			Path.ensureDirentSupport();
+			const entries = fs.readdirSync(root, { withFileTypes: true });
+			for (const entry of entries) {
+				yield entry;
+			}
+			return;
+		}
+
+		if (supportsDirent) {
+			const entries = fs.readdirSync(root, { withFileTypes: true });
+			for (const entry of entries) {
+				yield this.createChildFromDirent(entry, root);
+			}
+			return;
+		}
+
+		const dirnames = fs.readdirSync(root);
+		for (const dirname of dirnames) {
+			yield this.createChildFromDirname(dirname, root);
+		}
+	}
+
+	private static hasDirentSupport(): boolean {
+		return typeof (fs as { Dirent?: unknown }).Dirent === "function";
+	}
+
+	private static ensureDirentSupport(): void {
+		if (!Path.hasDirentSupport()) {
+			throw new UnsupportedOperation(
+				"fs.readdir with { withFileTypes: true } is not supported by this runtime",
+			);
+		}
+	}
+
+	private createChildFromDirent(entry: Dirent, parentPath: string): Path {
+		const childPath =
+			parentPath === "." ? entry.name : nodepath.join(parentPath, entry.name);
+		const child = this.withSegments(childPath) as Path;
+		child.infoCache = new DirEntryInfo(entry, parentPath);
+		return child;
+	}
+
+	private createChildFromDirname(dirname: string, parentPath: string): Path {
+		const childPath =
+			parentPath === "." ? dirname : nodepath.join(parentPath, dirname);
+		const child = this.withSegments(childPath) as Path;
+		child.infoCache = new PathInfo(childPath);
+		return child;
 	}
 
 	private globSyncInternal(pattern: string, options?: fs.GlobOptions): Path[] {
