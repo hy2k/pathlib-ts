@@ -238,7 +238,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Docstring copied from CPython 3.14 pathlib.Path.info.
 	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.info
 	 */
-	get info(): PathInfo {
+	get info(): PathInfo | DirEntryInfo {
 		if (!this.infoCache) {
 			this.infoCache = new PathInfo(this.toString());
 		}

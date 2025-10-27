@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import nodepath from "node:path";
 import { Path, UnsupportedOperation } from "../src/index.js";
+import { DirEntryInfo, PathInfo } from "../src/os.js";
 import { makeSandbox } from "./helpers.js";
 
 const sandbox = makeSandbox();
@@ -20,6 +21,16 @@ describe("Path read (sync)", () => {
 	test("existsSync on base path", () => {
 		const base = new Path(sandbox.root);
 		expect(base.existsSync()).toBeTrue();
+	});
+
+	test("info property returns PathInfo and caches", () => {
+		const base = new Path(sandbox.root);
+		const info1 = base.info;
+		const info2 = base.info;
+		expect(info1).toBeDefined();
+		expect(info1).toBe(info2); // should be cached
+		// Optionally check type
+		expect(info1.constructor.name).toBe("PathInfo");
 	});
 
 	test("existsSync on missing file returns false", () => {
@@ -157,6 +168,35 @@ describe("Path read (sync)", () => {
 					})
 					[Symbol.iterator]();
 				expect(() => iterator.next()).toThrow(UnsupportedOperation);
+			} finally {
+				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
+			}
+		});
+
+		test("iterdirSync children have  DirEntryInfo", () => {
+			const base = new Path(sandbox.root);
+			const entries = base.iterdirSync();
+			for (const entry of entries) {
+				// infoCache should be set and be a DirEntryInfo
+				const cache = entry.info;
+				expect(cache).toBeInstanceOf(DirEntryInfo);
+			}
+		});
+
+		test("iterdirSync children fallback to PathInfo", () => {
+			const originalHasDirentSupport = Reflect.get(
+				Path,
+				"hasDirentSupport",
+			) as () => boolean;
+			Reflect.set(Path, "hasDirentSupport", () => false);
+			try {
+				const base = new Path(sandbox.root);
+				const entries = base.iterdirSync();
+				for (const entry of entries) {
+					// infoCache should be set and be a PathInfo
+					const cache = entry.info;
+					expect(cache).toBeInstanceOf(PathInfo);
+				}
 			} finally {
 				Reflect.set(Path, "hasDirentSupport", originalHasDirentSupport);
 			}
