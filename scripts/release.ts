@@ -188,7 +188,15 @@ async function main() {
 		if (preHead) runSync(["git", "reset", "--hard", preHead]);
 		process.exit(1);
 	}
-	const tagRes = runSync(["git", "tag", tag]);
+	// Create annotated tag for the release
+	const tagRes = runSync([
+		"git",
+		"tag",
+		"-a",
+		tag,
+		"-m",
+		`Release v${updated}`,
+	]);
 	if (!tagRes.success) {
 		console.error("git tag failed:");
 		console.error(tagRes.stderr.toString());
