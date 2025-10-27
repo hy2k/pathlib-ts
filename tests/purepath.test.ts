@@ -15,6 +15,31 @@ describe("PurePath basics", () => {
 		expect(p.toJSON()).toBe(p.toString());
 	});
 
+	test("protected parser and caseSensitive getters are called", () => {
+		// Kinda funky and looks into implementation details, but at least
+		// ensures those getters are tested for coverage.
+		class ExposedPurePath extends PurePath {
+			public getParser() {
+				return this.parser;
+			}
+			public getCaseSensitive() {
+				return this.caseSensitive;
+			}
+		}
+		const p = new ExposedPurePath("foo");
+		const parser = p.getParser();
+		const caseSensitive = p.getCaseSensitive();
+		expect(parser).toBeDefined();
+		// On POSIX, should be posixParser, on Windows, windowsParser
+		if (nodepath.sep === "/") {
+			expect(parser).toBe(nodepath.posix);
+			expect(caseSensitive).toBeTrue();
+		} else {
+			expect(parser).toBe(nodepath.win32);
+			expect(caseSensitive).toBeFalse();
+		}
+	});
+
 	test("parts, name, suffix, suffixes, stem", () => {
 		const P = PurePath;
 		const p = new P("/tmp", "dir", "file.tar.gz");

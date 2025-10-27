@@ -328,9 +328,9 @@ class PathInfoBase {
 				this.lstatResult = fs.lstatSync(this.pathStr);
 				return this.lstatResult;
 			}
-		} catch (_err) {
+		} catch (err) {
 			if (ignoreErrors) return null;
-			throw _err;
+			throw err;
 		}
 	}
 

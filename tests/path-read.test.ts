@@ -27,10 +27,8 @@ describe("Path read (sync)", () => {
 		const base = new Path(sandbox.root);
 		const info1 = base.info;
 		const info2 = base.info;
-		expect(info1).toBeDefined();
 		expect(info1).toBe(info2); // should be cached
-		// Optionally check type
-		expect(info1.constructor.name).toBe("PathInfo");
+		expect(info1).toBeInstanceOf(PathInfo);
 	});
 
 	test("existsSync on missing file returns false", () => {

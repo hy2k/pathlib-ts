@@ -145,6 +145,7 @@ describe("PathInfo basic behaviors", () => {
 		const f = nodepath.join(sandbox.root, "pinfo.txt");
 		fs.writeFileSync(f, "hello");
 		const info = new PathInfo(f);
+		expect(info.toString()).toBe(f);
 		expect(await info.exists()).toBeTrue();
 		expect(await info.isFile()).toBeTrue();
 		expect(await info.isDir()).toBeFalse();
