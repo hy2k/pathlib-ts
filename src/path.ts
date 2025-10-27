@@ -50,6 +50,18 @@ type PathRelativeToFn = {
 	(other: PathLike, options?: RelativeToOptions): PurePath;
 };
 
+type PathIsRelativeToExtra = RelativeToExtra & { walkUp?: boolean };
+
+type PathIsRelativeToOptions = { extra?: PathIsRelativeToExtra };
+
+type PathIsRelativeToFn = {
+	(
+		other: PathLike,
+		options: { extra: { policy: "auto"; followSymlinks?: boolean } },
+	): Promise<boolean>;
+	(other: PathLike, options?: PathIsRelativeToOptions): boolean;
+};
+
 function selectPurePathCtor(): typeof PurePath {
 	return isWindows ? PureWindowsPath : PurePosixPath;
 }
@@ -148,6 +160,66 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 
 		return applyRelative(target);
 	}) as PathRelativeToFn; // cast keeps overload resolution intact while allowing union return
+
+	/**
+	 * Return True if the path is relative to another path or False.
+	 *
+	 * Docstring copied from CPython 3.14 pathlib.PurePath.is_relative_to.
+	 *
+	 * ---
+	 *
+	 * Relative paths and JS import semantics: {@link Path.relativeTo}
+	 */
+	override isRelativeTo: PathIsRelativeToFn = ((
+		other: PathLike,
+		options?: PathIsRelativeToOptions,
+	) => {
+		const extraOptions = options?.extra;
+		const policy = extraOptions?.policy ?? "exact";
+		const followSymlinks = extraOptions?.followSymlinks ?? true;
+		const walkUp = extraOptions?.walkUp;
+		const target = this.coerceToPath(other);
+
+		// If policy is not "auto", no filesystem I/O is needed and we can
+		// delegate to PurePath's lexical implementation. This keeps behavior
+		// fast and deterministic. For the "parent" policy, use the
+		// parent's PurePath before delegating.
+		if (policy !== "auto") {
+			const base: PurePath =
+				policy === "parent" ? target.dropSegments(1) : target;
+
+			// PurePath.isRelativeTo expects a PathLike and performs purely
+			// lexical checks; it does not accept walkUp options. When
+			// walkUp is requested we need to call relativeTo with the walkUp
+			// option and catch exceptions (still synchronous for non-auto).
+			if (walkUp === undefined) {
+				return super.isRelativeTo(base);
+			}
+
+			try {
+				// Call the existing synchronous relativeTo with walkUp option
+				// to determine relativity when upward traversal is allowed.
+				this.relativeTo(base, { walkUp });
+				return true;
+			} catch {
+				return false;
+			}
+		}
+
+		// For "auto" we must perform I/O to decide whether to treat the
+		// anchor as a directory or its parent. This is asynchronous.
+		return (async () => {
+			try {
+				await this.relativeTo(target, {
+					...(walkUp !== undefined ? { walkUp } : {}),
+					extra: { policy: "auto", followSymlinks },
+				});
+				return true;
+			} catch {
+				return false;
+			}
+		})();
+	}) as PathIsRelativeToFn; // cast keeps overload resolution intact while allowing union return
 
 	private coerceToPath(value: PathLike): Path {
 		if (value instanceof Path) {
