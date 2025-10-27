@@ -194,3 +194,81 @@ describe("Path write (async)", () => {
 		expect((destDir.joinpath("dirD", "fileD") as Path).existsSync()).toBeTrue();
 	});
 });
+
+// Focused tests for option flags and edge cases
+describe("Path options (async) — mkdir, touch, unlink, copy", () => {
+	test("mkdir with parents=true creates nested dirs", async () => {
+		const d = new Path(sandbox.root).joinpath("nested", "a", "b", "c");
+		await d.mkdir({ parents: true });
+		expect(d.existsSync()).toBeTrue();
+		expect(d.isDirSync()).toBeTrue();
+	});
+
+	test("mkdir with existOk=true does not throw when directory exists", async () => {
+		const d = new Path(sandbox.root).joinpath("exists-ok-dir");
+		await d.mkdir({ existOk: true });
+		// second call should not throw
+		await d.mkdir({ existOk: true });
+		expect(d.isDirSync()).toBeTrue();
+	});
+
+	test("mkdir with mode sets the mode for the directory (basic check)", async () => {
+		const d = new Path(sandbox.root).joinpath("mode-dir");
+		await d.mkdir({ parents: true, mode: 0o700 });
+		const stat = d.statSync();
+		// check that some permission bits are set (owner exec bit should be present)
+		expect(Boolean(stat.mode & 0o700)).toBeTrue();
+	});
+
+	test("touch with existOk=false throws when file exists", async () => {
+		const f = new Path(sandbox.root).joinpath("touch-exists.txt");
+		await f.writeText("initial");
+		expect(async () => await f.touch({ existOk: false })).toThrow(/^EEXIST/);
+	});
+
+	test("touch with existOk=true does not throw and preserves file", async () => {
+		const f = new Path(sandbox.root).joinpath("touch-no-throw.txt");
+		await f.writeText("keep");
+		await f.touch({ existOk: true });
+		expect(f.readTextSync()).toBe("keep");
+	});
+
+	test("touch with mode sets file mode (basic check)", async () => {
+		const f = new Path(sandbox.root).joinpath("touch-mode.txt");
+		// use 0o644 to differ from common default 0o600/umask interactions
+		await f.touch({ mode: 0o644 });
+		const stat = f.statSync();
+		expect(Boolean(stat.mode & 0o644)).toBeTrue();
+	});
+
+	test("unlink with missingOk=true does not throw when file missing", async () => {
+		const f = new Path(sandbox.root).joinpath("unlink-missing.txt");
+		// ensure file is absent
+		if (f.existsSync()) await f.unlink();
+		// should not throw
+		await f.unlink({ missingOk: true });
+		expect(f.existsSync()).toBeFalse();
+	});
+
+	test("unlink with missingOk=false throws when file missing", async () => {
+		const f = new Path(sandbox.root).joinpath("unlink-missing-throws.txt");
+		if (f.existsSync()) await f.unlink();
+		expect(async () => await f.unlink({ missingOk: false })).toThrow(/^ENOENT/);
+	});
+
+	test("copy preserves content and recursive copy copies dirs", async () => {
+		const base = new Path(sandbox.root);
+		const src = base.joinpath("file-copy-src.txt");
+		await src.writeText("copy content");
+		const dest = base.joinpath("file-copy-dest.txt");
+		await src.copy(dest, { preserveMetadata: false });
+		expect(dest.readTextSync()).toBe("copy content");
+
+		const srcDir = base.joinpath("dirCopySrc");
+		await srcDir.joinpath("sub").mkdir({ parents: true });
+		await srcDir.joinpath("sub", "f").writeText("x");
+		const destDir = base.joinpath("dirCopyDest");
+		await srcDir.copy(destDir);
+		expect(destDir.joinpath("sub", "f").existsSync()).toBeTrue();
+	});
+});

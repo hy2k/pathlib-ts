@@ -344,3 +344,53 @@ describe("rglobSync and walkSync bottom-up", () => {
 		expect(last).toBe(base.toString());
 	});
 });
+
+// Focused read-option tests (async)
+describe("Path read options (async)", () => {
+	test("readText with explicit encoding returns string", async () => {
+		const f = new Path(sandbox.root).joinpath("fileA");
+		const txt = await f.readText("utf8");
+		expect(typeof txt).toBe("string");
+		expect(txt).toContain("hello A");
+	});
+
+	test("readBytes returns a Buffer", async () => {
+		const f = new Path(sandbox.root).joinpath("fileA");
+		const buf = await f.readBytes();
+		expect(Buffer.isBuffer(buf)).toBeTrue();
+		expect(buf.toString("utf8")).toContain("hello A");
+	});
+
+	test("stat({followSymlinks:false}) works async", async () => {
+		if (!sandbox.canSymlink) return;
+		const linkA = new Path(sandbox.root).joinpath("linkA");
+		const st = await linkA.stat({ followSymlinks: false });
+		expect(st.isSymbolicLink()).toBeTrue();
+	});
+
+	test("exists({followSymlinks:false}) resolves correctly", async () => {
+		const base = new Path(sandbox.root);
+		expect(base.exists({ followSymlinks: false })).resolves.toBeTrue();
+	});
+
+	test("open stream can setEncoding and emit data", async () => {
+		const f = new Path(sandbox.root).joinpath("fileA");
+		const s = await f.open("r");
+		await new Promise<void>((resolve, reject) => {
+			let buf = "";
+			s.setEncoding("utf8");
+			s.on("data", (chunk) => {
+				buf += String(chunk);
+			});
+			s.on("end", () => {
+				try {
+					expect(buf.length).toBeGreaterThan(0);
+					resolve();
+				} catch (e) {
+					reject(e);
+				}
+			});
+			s.on("error", reject);
+		});
+	});
+});
