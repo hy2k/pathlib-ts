@@ -22,6 +22,34 @@ import { toPromise } from "./util.js";
 
 type WalkTuple = [Path, string[], string[]];
 
+/**
+ * Policy for resolving how the `other` argument should be treated.
+ * - "auto": attempt I/O to determine if `other` is a directory
+ * - "parent": always use `other.parent` (no I/O)
+ * - "exact": use the exact `other` path (CPython lexical semantics, no I/O)
+ */
+export type ResolutionPolicy = "auto" | "parent" | "exact";
+
+type RelativeToExtra = {
+	policy?: ResolutionPolicy;
+	followSymlinks?: boolean;
+};
+
+type RelativeToOptions = {
+	walkUp?: boolean;
+	extra?: RelativeToExtra;
+};
+
+type PathRelativeToFn = {
+	(
+		other: PathLike,
+		options: RelativeToOptions & {
+			extra: { policy: "auto"; followSymlinks?: boolean };
+		},
+	): Promise<PurePath>;
+	(other: PathLike, options?: RelativeToOptions): PurePath;
+};
+
 function selectPurePathCtor(): typeof PurePath {
 	return isWindows ? PureWindowsPath : PurePosixPath;
 }
@@ -49,6 +77,86 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	): T {
 		const ctor = this.constructor as new (...args: Array<PathLike>) => T;
 		return new ctor(...segments);
+	}
+
+	/**
+	 * Return the relative path to another path identified by the passed
+	 * arguments. If the operation is not possible (because this is not related
+	 * to the other path), raise ValueError.
+	 *
+	 * The *walk_up* parameter controls whether `..` may be used to resolve the
+	 * path.
+	 *
+	 * Docstring copied from CPython 3.14 pathlib.PurePath.relative_to.
+	 *
+	 * ---
+	 *
+	 * ### Relative paths and JS import semantics
+	 *
+	 * `Path.relativeTo()` keeps CPython's lexical result by default (policy `"exact"`).
+	 * When you need to mirror JS module resolution — treating the anchor as the parent directory when the reference is a file — provide an `extra.policy`:
+	 *
+	 * ```ts
+	 *
+	 * const asset = new Path("/src/assets/img.webp");
+	 * const content = new Path("/src/foo/bar/content.mdx");
+	 *
+	 * // auto performs I/O, so the return value is a Promise
+	 * const relative = await asset.relativeTo(content, {
+	 *     walkUp: true,
+	 *     extra: { policy: "auto" },
+	 * });
+	 *
+	 * console.log(relative.toString()); // '../../assets/img.webp'
+	 * ```
+	 *
+	 * Other policies:
+	 *
+	 * - `"parent"` — do not touch the filesystem, always anchor at
+	 * `other.parent`.
+	 * - `"exact"` — unchanged CPython semantics (default).
+	 * - `"auto"` — uses `stat`/`lstat` under the hoodset `extra.followSymlinks` to control how symlinks are treated.
+	 */
+	override relativeTo: PathRelativeToFn = ((
+		other: PathLike,
+		options?: RelativeToOptions,
+	) => {
+		const policy = options?.extra?.policy ?? "exact";
+		const walkUp = options?.walkUp;
+		const followSymlinks = options?.extra?.followSymlinks ?? true;
+		const target = this.coerceToPath(other);
+
+		const applyRelative = (base: PurePath): PurePath => {
+			if (walkUp === undefined) {
+				return super.relativeTo(base);
+			}
+			return super.relativeTo(base, { walkUp });
+		};
+
+		if (policy === "parent") {
+			const parent = target.dropSegments(1);
+			return applyRelative(parent);
+		}
+
+		if (policy === "auto") {
+			return (async () => {
+				const directory = await target.isDir({ followSymlinks });
+				const base = directory ? target : target.dropSegments(1);
+				return applyRelative(base);
+			})() satisfies Promise<PurePath>;
+		}
+
+		return applyRelative(target);
+	}) as PathRelativeToFn; // cast keeps overload resolution intact while allowing union return
+
+	private coerceToPath(value: PathLike): Path {
+		if (value instanceof Path) {
+			return value;
+		}
+		if (value instanceof PurePath) {
+			return this.withSegments(value.toString()) satisfies Path;
+		}
+		return this.withSegments(value) satisfies Path;
 	}
 
 	/**

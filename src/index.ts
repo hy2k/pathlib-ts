@@ -32,6 +32,7 @@ import {
 	UnsupportedOperation,
 } from "./purepath.js";
 
+export type { ResolutionPolicy } from "./path.js";
 export { DefaultPath, Path, PosixPath, WindowsPath } from "./path.js";
 export {
 	PurePath,

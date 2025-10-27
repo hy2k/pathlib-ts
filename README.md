@@ -34,6 +34,7 @@ for (const child of await dir.iterdir()) {
 - Path / PosixPath / WindowsPath — concrete paths with filesystem operations (stat, read/write, mkdir, glob, copy, rename, etc.).
 - Async-first design with synchronous counterparts (e.g. `readText()` / `readTextSync()`).
 - Best-effort parity with CPython's `pathlib` where Node APIs permit.
+- Relative path policies: opt into JS import-style behaviour via `Path.relativeTo(..., { extra: { policy: "auto" } })` while keeping CPython's default semantics.
 
 ## Runtime support
 
