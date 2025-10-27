@@ -52,15 +52,6 @@ describe("PurePath basics", () => {
 		);
 	});
 
-	test("relativeTo and isRelativeTo", () => {
-		const P = PurePath;
-		const p = new P("/a/b/c");
-		const base = new P("/a");
-		expect(p.relativeTo(base).toString()).toBe(nodepath.join("b", "c"));
-		expect(p.isRelativeTo("/a/b")).toBeTrue();
-		expect(p.isRelativeTo("/x")).toBeFalse();
-	});
-
 	test("isAbsolute and asPosix", () => {
 		const P = PurePath;
 		const rel = new P("a", "b");
@@ -126,16 +117,70 @@ describe("PurePath invalid inputs", () => {
 	});
 });
 
-describe("PurePath.relativeTo walkUp behavior", () => {
-	test("without walkUp throws when target is not prefix", () => {
-		const p = new PurePath(nodepath.join("/", "a", "b"));
-		expect(() => p.relativeTo("/x")).toThrow();
+describe("PurePath.relativeTo", () => {
+	test("relativeTo and isRelativeTo", () => {
+		const p = new PurePath("/a/b/c");
+		const base = new PurePath("/a");
+		expect(p.relativeTo(base).toString()).toBe("b/c");
+		expect(p.isRelativeTo("/a/b")).toBeTrue();
+		expect(p.isRelativeTo("/x")).toBeFalse();
 	});
 
-	test("with walkUp allows .. to escape", () => {
-		const p = new PurePath(nodepath.join("/", "a", "b", "c"));
-		const out = p.relativeTo("/a/x", { walkUp: true });
-		expect(out.toString()).toBe(nodepath.join("..", "b", "c"));
+	test("without walkUp throws when other is not subpath", () => {
+		const p = new PurePath("/a/b");
+		expect(() => p.relativeTo("/a/b/c")).toThrowError(
+			"/a/b is not in the subpath of /a/b/c",
+		);
+	});
+
+	test("from absolute to relative throws", () => {
+		const p = new PurePath("/a/b/c");
+		expect(() => p.relativeTo("x/y/z")).toThrowError(/have different anchors/);
+	});
+
+	test("from relative to absolute throws", () => {
+		const p = new PurePath("a/b/c");
+		expect(() => p.relativeTo("/x/y/z")).toThrowError(/have different anchors/);
+	});
+});
+
+describe("PurePath.relativeTo with walkUp", () => {
+	test("from absolute path when subpath", () => {
+		const p = new PurePath("/a/b/c");
+		const out = p.relativeTo("/a", { walkUp: true });
+		expect(out.toString()).toBe("b/c");
+	});
+
+	test("from absolute path needing walk up", () => {
+		const p = new PurePath("/a");
+		const out = p.relativeTo("/a/b/c", { walkUp: true });
+		expect(out.toString()).toBe("../..");
+	});
+
+	test("from absolute path", () => {
+		const p = new PurePath("/a/b/c");
+		const out = p.relativeTo("/x/y/z", { walkUp: true });
+		expect(out.toString()).toBe("../../../a/b/c");
+	});
+
+	test("from relative path", () => {
+		const p = new PurePath("a/b/c");
+		const out = p.relativeTo("x/y/z", { walkUp: true });
+		expect(out.toString()).toBe("../../../a/b/c");
+	});
+
+	test("throws from absolute to relative", () => {
+		const p = new PurePath("/a/b/c");
+		expect(() => p.relativeTo("x/y/z", { walkUp: true })).toThrowError(
+			/have different anchors/,
+		);
+	});
+
+	test("throws from relative to absolute", () => {
+		const p = new PurePath("a/b/c");
+		expect(() => p.relativeTo("/x/y/z", { walkUp: true })).toThrowError(
+			/have different anchors/,
+		);
 	});
 });
 
