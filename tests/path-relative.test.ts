@@ -92,6 +92,11 @@ describe("Path.relativeTo policies", () => {
 describe("Path.isRelativeTo policies", () => {
 	test("default (exact) matches lexical behavior", () => {
 		expect(imagePath.isRelativeTo(contentPath)).toBeFalse();
+		expectTypeOf(
+			imagePath.isRelativeTo(contentPath, {
+				extra: { policy: "exact" },
+			}),
+		).toEqualTypeOf<boolean>();
 	});
 
 	test("policy parent mirrors directory anchor", () => {
@@ -100,6 +105,11 @@ describe("Path.isRelativeTo policies", () => {
 				extra: { policy: "parent", walkUp: true },
 			}),
 		).toBeTrue();
+		expectTypeOf(
+			imagePath.isRelativeTo(contentPath, {
+				extra: { policy: "parent" },
+			}),
+		).toEqualTypeOf<boolean>();
 	});
 
 	test("policy auto performs filesystem-aware check", async () => {
@@ -121,6 +131,18 @@ describe("Path.isRelativeTo policies", () => {
 });
 
 describe("Path.relativeTo additional edge cases", () => {
+	test("relativeTo policy type narrows", () => {
+		expectTypeOf(
+			contentPath.relativeTo(contentPath, { extra: { policy: "parent" } }),
+		).toEqualTypeOf<PurePath>();
+		expectTypeOf(
+			contentPath.relativeTo(contentPath, { extra: { policy: "exact" } }),
+		).toEqualTypeOf<PurePath>();
+		expectTypeOf(
+			contentPath.relativeTo(contentPath, { extra: { policy: "auto" } }),
+		).toEqualTypeOf<Promise<PurePath>>();
+	});
+
 	test("relativeTo without walkUp throws for non-descendants", () => {
 		// By default walkUp is undefined which disallows `..` segments; this
 		// should raise when the paths are unrelated.

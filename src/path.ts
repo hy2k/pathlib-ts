@@ -30,38 +30,51 @@ type WalkTuple = [Path, string[], string[]];
  */
 export type ResolutionPolicy = "auto" | "parent" | "exact";
 
-type RelativeToExtra = {
-	policy?: ResolutionPolicy;
-	followSymlinks?: boolean;
-};
-
-type RelativeToOptions = {
+type PathRelativeToOptions = {
 	walkUp?: boolean;
-	extra?: RelativeToExtra;
+	extra?: {
+		policy?: ResolutionPolicy;
+		followSymlinks?: boolean;
+	};
 };
 
-type PathRelativeToFn = {
-	(
-		other: PathLike,
-		options: RelativeToOptions & {
-			extra: { policy: "auto"; followSymlinks?: boolean };
-		},
-	): Promise<PurePath>;
-	(other: PathLike, options?: RelativeToOptions): PurePath;
+type PathIsRelativeToOptions = {
+	extra?: {
+		policy?: ResolutionPolicy;
+		followSymlinks?: boolean;
+		walkUp?: boolean;
+	};
 };
 
-type PathIsRelativeToExtra = RelativeToExtra & { walkUp?: boolean };
+type PathOptionsArg<T> = T | undefined;
 
-type PathIsRelativeToOptions = { extra?: PathIsRelativeToExtra };
+type ExtractPolicy<T> = T extends { extra: { policy: infer P } }
+	? P
+	: T extends { extra?: { policy?: infer P } }
+		? P
+		: undefined;
 
-type PathIsRelativeToAutoOptions = {
-	extra: PathIsRelativeToExtra & { policy: "auto" };
-};
+type PathRelativeToReturn<
+	Options extends PathOptionsArg<PathRelativeToOptions>,
+> = ExtractPolicy<Options> extends "auto" ? Promise<PurePath> : PurePath;
 
-type PathIsRelativeToFn = {
-	(other: PathLike, options: PathIsRelativeToAutoOptions): Promise<boolean>;
-	(other: PathLike, options?: PathIsRelativeToOptions): boolean;
-};
+type PathIsRelativeToReturn<
+	Options extends PathOptionsArg<PathIsRelativeToOptions>,
+> = ExtractPolicy<Options> extends "auto" ? Promise<boolean> : boolean;
+
+type PathRelativeToFn = <
+	Options extends PathOptionsArg<PathRelativeToOptions> = undefined,
+>(
+	other: PathLike,
+	options?: Options,
+) => PathRelativeToReturn<Options>;
+
+type PathIsRelativeToFn = <
+	Options extends PathOptionsArg<PathIsRelativeToOptions> = undefined,
+>(
+	other: PathLike,
+	options?: Options,
+) => PathIsRelativeToReturn<Options>;
 
 function selectPurePathCtor(): typeof PurePath {
 	return isWindows ? PureWindowsPath : PurePosixPath;
@@ -132,9 +145,9 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 */
 	override relativeTo: PathRelativeToFn = ((
 		other: PathLike,
-		options?: RelativeToOptions,
+		options?: PathRelativeToOptions,
 	) => {
-		const policy = options?.extra?.policy ?? "exact";
+		const policy: ResolutionPolicy = options?.extra?.policy ?? "exact";
 		const walkUp = options?.walkUp;
 		const followSymlinks = options?.extra?.followSymlinks ?? true;
 		const target = this.coerceToPath(other);
@@ -176,7 +189,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 		options?: PathIsRelativeToOptions,
 	) => {
 		const extraOptions = options?.extra;
-		const policy = extraOptions?.policy ?? "exact";
+		const policy: ResolutionPolicy = extraOptions?.policy ?? "exact";
 		const followSymlinks = extraOptions?.followSymlinks ?? true;
 		const walkUp = extraOptions?.walkUp;
 		const target = this.coerceToPath(other);
