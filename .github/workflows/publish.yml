@@ -46,6 +46,9 @@ jobs:
       - name: Run tests
         run: bun test
 
+      - name: Run check
+        run: bun run check
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:

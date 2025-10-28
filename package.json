@@ -17,10 +17,11 @@
 		}
 	},
 	"scripts": {
-		"build": "bun run clean && tsc",
-		"e2e": "./tests/e2e/run-e2e-all.sh",
+		"build": "bun run clean && tsc -p tsconfig.build.json && echo 'Build complete.'",
+		"e2e": "./scripts/e2e/run-e2e-all.sh",
 		"fix": "biome check --fix",
-		"clean": "rm -rf dist && tsc --build --clean",
+		"check": "tsc && echo 'tsc ok' && biome check",
+		"clean": "rm -rf dist",
 		"release": "bun ./scripts/release.ts",
 		"prepublishOnly": "bun run build"
 	},
