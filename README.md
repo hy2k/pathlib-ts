@@ -9,7 +9,7 @@ pathlib-ts brings the convenience and expressiveness of Python's `pathlib` to th
 - Familiar API: developers who like Python's `pathlib` can use similar concepts in TypeScript.
 - Async-first: most filesystem methods are asynchronous and return Promises; sync variants are available with the `Sync` suffix.
 - Runtime-portable: implemented to work on Node, Bun, and Deno without native extensions.
-- Small and dependency-free: relies only on Node builtins (`node:fs`, `node:path`, `node:url`) supported on all targeted runtimes.
+- Small and dependency-free: relies only on Node builtins (`node:fs`, `node:path`, `node:url`, `node:os`) supported on all targeted runtimes.
 
 ## Quick start
 
