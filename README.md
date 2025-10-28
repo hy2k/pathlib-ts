@@ -51,8 +51,8 @@ for (const child of await dir.iterdir()) {
 ## Module organization
 
 - CPython's `pathlib` keeps `PurePath` and `Path` implementations in a single `__init__.py` module.
-- This port now keeps the public surface in `src/pathlib.ts`, re-exporting logic split between `src/purepath.ts` (pure path operations) and `src/path.ts` (filesystem-aware paths).
-- The split mirrors the logical separation while preserving the exact runtime exports exposed from `src/pathlib.ts`.
+- This port now keeps the public surface in `src/index.ts`, re-exporting logic split between `src/purepath.ts` (pure path operations) and `src/path.ts` (filesystem-aware paths).
+- The split mirrors the logical separation while preserving the exact runtime exports exposed from `src/index.ts`.
 
 ## License and attribution
 
