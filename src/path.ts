@@ -54,11 +54,12 @@ type PathIsRelativeToExtra = RelativeToExtra & { walkUp?: boolean };
 
 type PathIsRelativeToOptions = { extra?: PathIsRelativeToExtra };
 
+type PathIsRelativeToAutoOptions = {
+	extra: PathIsRelativeToExtra & { policy: "auto" };
+};
+
 type PathIsRelativeToFn = {
-	(
-		other: PathLike,
-		options: { extra: { policy: "auto"; followSymlinks?: boolean } },
-	): Promise<boolean>;
+	(other: PathLike, options: PathIsRelativeToAutoOptions): Promise<boolean>;
 	(other: PathLike, options?: PathIsRelativeToOptions): boolean;
 };
 

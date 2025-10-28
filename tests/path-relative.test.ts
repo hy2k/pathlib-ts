@@ -1,4 +1,11 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	describe,
+	expect,
+	expectTypeOf,
+	test,
+} from "bun:test";
 import fs from "node:fs";
 import nodepath from "node:path";
 import { Path, PurePath } from "../src/index.js";
@@ -96,20 +103,20 @@ describe("Path.isRelativeTo policies", () => {
 	});
 
 	test("policy auto performs filesystem-aware check", async () => {
-		expect(
-			imagePath.isRelativeTo(contentPath, {
-				extra: { policy: "auto", walkUp: true },
-			}),
-		).resolves.toBeTrue();
+		const result = imagePath.isRelativeTo(contentPath, {
+			extra: { policy: "auto", walkUp: true },
+		});
+		expect(result).resolves.toBeTrue();
+		expectTypeOf(result).toEqualTypeOf<Promise<boolean>>();
 	});
 
 	test("policy auto treats directories without change", async () => {
 		const contentDir = new Path(contentDirPath);
-		expect(
-			imagePath.isRelativeTo(contentDir, {
-				extra: { policy: "auto" },
-			}),
-		).resolves.toBeFalse();
+		const result = imagePath.isRelativeTo(contentDir, {
+			extra: { policy: "auto" },
+		});
+		expectTypeOf(result).toEqualTypeOf<Promise<boolean>>();
+		expect(result).resolves.toBeFalse();
 	});
 });
 
