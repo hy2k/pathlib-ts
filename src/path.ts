@@ -20,7 +20,7 @@ import {
 } from "./purepath.js";
 import { toPromise } from "./util.js";
 
-type WalkTuple = [Path, string[], string[]];
+export type WalkTuple = [Path, string[], string[]];
 
 /**
  * Policy for resolving how the `other` argument should be treated.

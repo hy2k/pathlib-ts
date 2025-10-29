@@ -4,7 +4,7 @@ import os from "node:os";
 import nodepath from "node:path";
 import { Path, UnsupportedOperation } from "../src/index.js";
 import { DirEntryInfo, PathInfo } from "../src/os.js";
-import { makeSandbox } from "./helpers.js";
+import { expectWalkSnapshot, makeSandbox } from "./helpers.js";
 
 const sandbox = makeSandbox();
 
@@ -257,21 +257,19 @@ describe("Path read (sync)", () => {
 		expect(nodepath.isAbsolute(Path.homeSync().toString())).toBeTrue();
 	});
 
-	test("walkSync (top-down) returns records", () => {
+	test("walkSync (top-down) yields expected tuples", () => {
+		sandbox.reset();
 		const base = new Path(sandbox.root);
 		const records = base.walkSync();
-		expect(records.length).toBeGreaterThan(0);
+		expectWalkSnapshot(sandbox, records);
+		expect(records[0]?.[0].toString()).toBe(base.toString());
 	});
 
-	test("walkSync bottom-up returns records", () => {
+	test("walkSync bottom-up yields expected tuples", () => {
+		sandbox.reset();
 		const base = new Path(sandbox.root);
 		const records = base.walkSync({ topDown: false });
-		expect(records.length).toBeGreaterThan(0);
-	});
-
-	test("walkSync bottom-up includes root last", () => {
-		const base = new Path(sandbox.root);
-		const records = base.walkSync({ topDown: false });
+		expectWalkSnapshot(sandbox, records);
 		const last = records[records.length - 1]?.[0].toString();
 		expect(last).toBe(base.toString());
 	});
@@ -530,10 +528,21 @@ describe("Path read (async)", () => {
 		expect(expanded.toString().startsWith(os.homedir())).toBeTrue();
 	});
 
-	test("walk() returns records", async () => {
+	test("walk() yields expected tuples", async () => {
+		sandbox.reset();
 		const base = new Path(sandbox.root);
 		const records = await base.walk();
-		expect(records.length).toBeGreaterThan(0);
+		expectWalkSnapshot(sandbox, records);
+		expect(records[0]?.[0].toString()).toBe(base.toString());
+	});
+
+	test("walk({topDown:false}) yields expected tuples", async () => {
+		sandbox.reset();
+		const base = new Path(sandbox.root);
+		const records = await base.walk({ topDown: false });
+		expectWalkSnapshot(sandbox, records);
+		const last = records[records.length - 1]?.[0].toString();
+		expect(last).toBe(base.toString());
 	});
 });
 
@@ -565,7 +574,9 @@ describe("rglobSync and walkSync bottom-up", () => {
 	});
 
 	test("walkSync bottom-up order includes root last", () => {
+		sandbox.reset();
 		const records = base.walkSync({ topDown: false });
+		expectWalkSnapshot(sandbox, records);
 		const last = records[records.length - 1]?.[0].toString();
 		expect(last).toBe(base.toString());
 	});
