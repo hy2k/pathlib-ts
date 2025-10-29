@@ -1,8 +1,24 @@
 import nodeos from "node:os";
 
 /**
- * Small ErrnoError class that matches Node's ErrnoException shape.
- * Use the factory makeErrnoError to create instances consistently.
+ * Error type mirroring Node's {@link NodeJS.ErrnoException} contract.
+ *
+ * @remarks
+ *
+ * CPython relies on `OSError` subclasses carrying `errno`, `code`, `path`, and `dest` metadata. The
+ * TypeScript port surfaces the same information so callers can branch on POSIX-style error codes while
+ * staying compatible with Node's native error handling. Instances are typically created via helper factories
+ * in this package.
+ *
+ * @example Raising an ErrnoError when a copy would clobber the source
+ * ```ts
+ * throw new ErrnoError("Source and target are the same", "EINVAL", {
+ *   path: "/tmp/source",
+ *   dest: "/tmp/source"
+ * });
+ * ```
+ *
+ * @internal
  */
 export class ErrnoError extends Error implements NodeJS.ErrnoException {
 	errno?: number;

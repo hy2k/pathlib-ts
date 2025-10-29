@@ -39,13 +39,18 @@ import { toPromise } from "./util.js";
 export { ErrnoError } from "./errors.js";
 
 /**
- * Copy data from file-like object `source_f` to file-like object `target_f`.
+ * Copy data from the source handle to the destination handle asynchronously.
  *
- * Docstring copied from CPython 3.14 pathlib._os.copyfileobj.
+ * @remarks
  *
- * ---
- * This port prefers fast path copies via Node's filesystem helpers when
- * available and falls back to stream-based copies otherwise.
+ * Mirrors CPython's {@link https://github.com/python/cpython/blob/3.14/Lib/pathlib/_os.py | `pathlib._os.copyfileobj`}.
+ * When both arguments are string paths the implementation defers to `fs.copyFileSync` for performance. Mixed
+ * stream/path scenarios fall back to a synchronous implementation executed within a `Promise` wrapper.
+ *
+ * @param source - Path or readable stream supplying data.
+ * @param target - Path or writable stream receiving data.
+ * @returns Promise that resolves when copying completes.
+ * @throws {@link ErrnoError} When the provided handles cannot be copied synchronously.
  */
 export async function copyFileObj(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -56,6 +61,16 @@ export async function copyFileObj(
 
 /**
  * Synchronous variant of {@link copyFileObj}.
+ *
+ * @remarks
+ *
+ * Optimises path-to-path copies using `fs.copyFileSync`. When provided with stream handles that expose file
+ * descriptors, data is copied using a fixed-size buffer. All other combinations raise {@link ErrnoError} to
+ * match CPython's guard rails around unsupported file objects.
+ *
+ * @param source - Path or readable stream supplying data.
+ * @param target - Path or writable stream receiving data.
+ * @throws {@link ErrnoError} When copying cannot be performed synchronously.
  */
 export function copyFileObjSync(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -101,14 +116,18 @@ export function copyFileObjSync(
 }
 
 /**
- * Open the file pointed to by this path and return a file object, as the
- * built-in `open()` function does.
+ * Open a file using CPython-compatible mode semantics and return a Node stream.
  *
- * Docstring copied from CPython 3.14 pathlib._os.magic_open.
+ * @remarks
  *
- * ---
+ * Mirrors `pathlib._os.magic_open`, translating classic `open()` flags (including text vs binary) into a
+ * `fs.createReadStream` invocation. Text modes default to UTF-8 unless an explicit encoding is supplied, and
+ * binary modes reject encodings, matching CPython's validation.
  *
- * The implementation adapts Python's mode handling to Node.js streams.
+ * @param pathStr - Absolute or relative file path.
+ * @param options - Mode, encoding, and buffering preferences.
+ * @returns A readable stream configured per the provided mode.
+ * @throws {@link TypeError} When binary mode is combined with an encoding.
  */
 export function magicOpen(
 	pathStr: string,
@@ -133,9 +152,18 @@ export function magicOpen(
 }
 
 /**
- * Raise OSError(EINVAL) if the other path is within this path.
+ * Validate that two paths do not point to the same file or parent/child relationship.
  *
- * Docstring copied from CPython 3.14 pathlib._os.ensure_distinct_paths.
+ * @remarks
+ *
+ * Resolves both arguments to absolute paths via `node:path.resolve` and raises {@link ErrnoError} with
+ * `EINVAL` when they are identical or when the target resides within the source. This mirrors
+ * `pathlib._os.ensure_distinct_paths` and protects operations such as `Path.copy` from destructive
+ * self-overwrites.
+ *
+ * @param source - Candidate source path.
+ * @param target - Candidate destination path.
+ * @throws {@link ErrnoError} When the paths are identical or one is nested under the other.
  */
 export function ensureDistinctPaths(source: string, target: string): void {
 	const s = nodepath.resolve(source);
@@ -155,9 +183,17 @@ export function ensureDistinctPaths(source: string, target: string): void {
 }
 
 /**
- * Raise OSError(EINVAL) if both paths refer to the same file.
+ * Raise `OSError(EINVAL)` when two handles refer to the same filesystem entry (async wrapper).
  *
- * Docstring copied from CPython 3.14 pathlib._os.ensure_different_files.
+ * @remarks
+ *
+ * Provides the asynchronous entry point for {@link ensureDifferentFilesSync}. Useful for APIs that mirror the
+ * async-first design of the concrete {@link Path} methods.
+ *
+ * @param source - Source path-like object or descriptor.
+ * @param target - Target path-like object or descriptor.
+ * @returns Promise that resolves when the paths are distinct.
+ * @throws {@link ErrnoError} When the two inputs resolve to the same file.
  */
 export async function ensureDifferentFiles(
 	source: unknown,
@@ -169,9 +205,15 @@ export async function ensureDifferentFiles(
 /**
  * Synchronous variant of {@link ensureDifferentFiles}.
  *
- * ---
+ * @remarks
  *
- * Best-effort port: tries to use file id if available, else falls back to stat/path.
+ * Performs best-effort comparisons using cached file identifiers (when provided by `Path.info`) and finally
+ * falls back to a stat-based comparison. Raises {@link ErrnoError} with `EINVAL` when both operands refer to
+ * the same file.
+ *
+ * @param source - Source path-like object or descriptor.
+ * @param target - Target path-like object or descriptor.
+ * @throws {@link ErrnoError} When the two inputs resolve to the same file.
  */
 export function ensureDifferentFilesSync(
 	source: unknown,
@@ -223,9 +265,17 @@ export function ensureDifferentFilesSync(
 }
 
 /**
- * Copy metadata from the given PathInfo to the given local path.
+ * Copy metadata (timestamps, permissions, ownership) from a source info object to a filesystem path.
  *
- * Docstring copied from CPython 3.14 pathlib._os.copy_info.
+ * @remarks
+ *
+ * Asynchronous facade for {@link copyInfoSync}. The behaviour mirrors CPython's `pathlib._os.copy_info`,
+ * with best-effort application of metadata depending on platform support.
+ *
+ * @param info - Source object providing metadata (string path or object with `_path`).
+ * @param target - Destination path to update.
+ * @param options - Controls symlink dereferencing.
+ * @returns Promise that resolves when metadata application completes.
  */
 export async function copyInfo(
 	info: unknown,
@@ -238,9 +288,14 @@ export async function copyInfo(
 /**
  * Synchronous variant of {@link copyInfo}.
  *
- * ---
+ * @remarks
  *
- * Best-effort copy of timestamps, permissions, and ownership using sync fs APIs where available.
+ * Attempts to transfer timestamps (`utimes`), permissions (`chmod`), and ownership (`chown`) when available.
+ * Failures are ignored to match CPython's resilience in cross-platform environments.
+ *
+ * @param info - Source object providing metadata (string path or object with `_path`).
+ * @param target - Destination path to update.
+ * @param options - Controls symlink dereferencing.
  */
 export function copyInfoSync(
 	info: unknown,
@@ -386,19 +441,24 @@ class PathInfoBase {
 }
 
 /**
- * Implementation of `pathlib.types.PathInfo` that provides status information
- * for filesystem paths.
+ * Cached stat provider corresponding to CPython's `pathlib.types.PathInfo` protocol.
  *
- * Docstring copied from CPython 3.14 pathlib._os.PathInfo.
+ * @remarks
+ *
+ * Instances wrap a filesystem path string and lazily cache `fs.statSync` / `fs.lstatSync` results. Methods
+ * such as {@link PathInfo.exists} resolve once and reuse their cached value to avoid duplicate system calls
+ * when `Path.info` is reused across operations.
  */
 export class PathInfo extends PathInfoBase {}
 
 /**
- * Implementation of `pathlib.types.PathInfo` that provides status information
- * by querying a wrapped `os.DirEntry` object. Don't try to construct it
- * yourself.
+ * `PathInfo` implementation that wraps a Node {@link fs.Dirent}.
  *
- * Docstring copied from CPython 3.14 pathlib._os.DirEntryInfo.
+ * @remarks
+ *
+ * Populated when directory entries are generated via `fs.readdir({ withFileTypes: true })`. The class stores
+ * the original dirent and optionally the parent path, exposing cached stat information where possible to
+ * reduce redundant filesystem calls during iteration.
  */
 export class DirEntryInfo extends PathInfoBase {
 	private _entry: (fs.Dirent & { path?: string }) | null;
