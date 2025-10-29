@@ -20,13 +20,30 @@ import {
 } from "./purepath.js";
 import { toPromise } from "./util.js";
 
+/**
+ * Tuple returned by {@link Path.walk} mirroring CPython's `(dirpath, dirnames, filenames)` shape.
+ *
+ * @remarks
+ *
+ * The first element is the directory being visited, followed by shallow copies of the names reported in
+ * that directory. Mutating the `dirnames` array during a top-down walk prevents traversal into the removed
+ * entries, aligning with CPython's documented behaviour.
+ */
 export type WalkTuple = [Path, string[], string[]];
 
 /**
  * Policy for resolving how the `other` argument should be treated.
- * - "auto": attempt I/O to determine if `other` is a directory
- * - "parent": always use `other.parent` (no I/O)
- * - "exact": use the exact `other` path (CPython lexical semantics, no I/O)
+ *
+ * @remarks
+ *
+ * Applied by {@link Path.relativeTo} and {@link Path.isRelativeTo} when computing relationships between
+ * concrete paths. Policies extend CPython's lexical semantics with an optional asynchronous probe for JS
+ * module resolution scenarios.
+ *
+ * - `"exact"` (default): perform a purely lexical comparison, matching CPython's behaviour.
+ * - `"parent"`: anchor relative operations to `other.parent` without touching the filesystem.
+ * - `"auto"`: probe the filesystem to decide whether `other` should be treated as a directory. This may
+ *   require I/O and therefore produces a `Promise`.
  */
 export type ResolutionPolicy = "auto" | "parent" | "exact";
 
@@ -81,16 +98,40 @@ function selectPurePathCtor(): typeof PurePath {
 }
 
 /**
- * PurePath subclass that can make system calls.
+ * Concrete path that layers filesystem I/O on top of {@link PurePath} semantics.
  *
- * Path represents a filesystem path but unlike PurePath, also offers
- * methods to do system calls on path objects. Depending on your system,
- * instantiating a Path will return either a PosixPath or a WindowsPath
- * object. You can also instantiate a PosixPath or WindowsPath directly,
- * but cannot instantiate a WindowsPath on a POSIX system or vice versa.
+ * @remarks
  *
- * Docstring copied from CPython 3.14 pathlib.Path.
- * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path
+ * Mirrors {@link https://docs.python.org/3/library/pathlib.html#concrete-paths | CPython's `pathlib.Path`}.
+ * The runtime selects {@link PosixPath} or {@link WindowsPath} during construction so the instance can call
+ * into Node's filesystem APIs safely. Each I/O method provides an asynchronous default that resolves to a
+ * promise, alongside a synchronous companion suffixed with `Sync`, preserving ergonomic parity with the
+ * reference implementation while embracing JavaScript's async-first patterns.
+ *
+ * `Path` also introduces {@link ResolutionPolicy | policy-driven} behaviour for relative computations to
+ * accommodate module-resolution workflows common in the JS ecosystem. The lexical defaults remain faithful
+ * to CPython.
+ *
+ * @example Reading text from a sibling file
+ * ```ts
+ * import { Path } from "pathlib-ts";
+ *
+ * const readme = new Path("./README.md");
+ * const contents = await readme.readText();
+ *
+ * console.log(contents.slice(0, 40));
+ * ```
+ *
+ * @see https://docs.python.org/3/library/pathlib.html#concrete-paths
+ *
+ * @privateRemarks
+ *
+ * PurePath subclass that can make system calls. Path represents a filesystem
+ * path but unlike PurePath, also offers methods to do system calls on path
+ * objects. Depending on your system, instantiating a Path will return either a
+ * PosixPath or a WindowsPath object. You can also instantiate a PosixPath or
+ * WindowsPath directly, but cannot instantiate a WindowsPath on a POSIX system
+ * or vice versa.
  */
 export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	// Path.infoCache may store a PathInfo or a DirEntryInfo created by
@@ -110,38 +151,37 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * arguments. If the operation is not possible (because this is not related
 	 * to the other path), raise ValueError.
 	 *
-	 * The *walk_up* parameter controls whether `..` may be used to resolve the
+	 * @remarks
+	 *
+	 * The *walkUp* parameter controls whether `..` may be used to resolve the
 	 * path.
-	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.relative_to.
-	 *
-	 * ---
-	 *
-	 * ### Relative paths and JS import semantics
-	 *
-	 * `Path.relativeTo()` keeps CPython's lexical result by default (policy `"exact"`).
-	 * When you need to mirror JS module resolution — treating the anchor as the parent directory when the reference is a file — provide an `extra.policy`:
-	 *
-	 * ```ts
-	 *
-	 * const asset = new Path("/src/assets/img.webp");
-	 * const content = new Path("/src/foo/bar/content.mdx");
-	 *
-	 * // auto performs I/O, so the return value is a Promise
-	 * const relative = await asset.relativeTo(content, {
-	 *     walkUp: true,
-	 *     extra: { policy: "auto" },
-	 * });
-	 *
-	 * console.log(relative.toString()); // '../../assets/img.webp'
-	 * ```
-	 *
-	 * Other policies:
 	 *
 	 * - `"parent"` — do not touch the filesystem, always anchor at
 	 * `other.parent`.
 	 * - `"exact"` — unchanged CPython semantics (default).
 	 * - `"auto"` — uses `stat`/`lstat` under the hoodset `extra.followSymlinks` to control how symlinks are treated.
+	 *
+	 * By default the method behaves like CPython (`policy: "exact"`). Specify
+	 * `options.extra.policy` to opt into import-friendly behaviour (`"auto"`) or a lexical parent anchor (`"parent"`).
+	 * When `policy === "auto"` the operation may consult the filesystem and therefore returns a promise. See
+	 * `docs/caveats.md` for nuance around symlinks and module resolution.
+	 *
+	 * @example Relative path for colocated assets while mirroring JS module semantics
+	 *
+	 * ```ts
+	 * const asset = new Path("/src/assets/img.webp");
+	 * const content = new Path("/src/foo/bar/content.mdx");
+	 * const relative = await asset.relativeTo(content, {
+	 *   walkUp: true,
+	 *   extra: { policy: "auto" }
+	 * });
+	 * console.log(relative.toString()); // '../../assets/img.webp'
+	 * ```
+	 *
+	 * @param other - The anchor path to compare against.
+	 * @param options - Behavioural toggles controlling lexical vs filesystem-based policies.
+	 * @returns A {@link PurePath} or `Promise<PurePath>` depending on the selected policy.
+	 * @throws {@link Error} When the paths are unrelated and `walkUp` is not permitted.
 	 */
 	override relativeTo: PathRelativeToFn = ((
 		other: PathLike,
@@ -176,13 +216,17 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}) as PathRelativeToFn; // cast keeps overload resolution intact while allowing union return
 
 	/**
-	 * Return True if the path is relative to another path or False.
+	 * Determines whether this path can be expressed relative to another according to the selected policy.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.is_relative_to.
+	 * @remarks
 	 *
-	 * ---
+	 * Policies mirror {@link Path.relativeTo}. `policy: "auto"` triggers asynchronous I/O to validate the
+	 * anchor, so the method returns a promise in that case. Use this before attempting a relative conversion to avoid
+	 * handling exceptions.
 	 *
-	 * Relative paths and JS import semantics: {@link Path.relativeTo}
+	 * @param other - Anchor path used to test relativity.
+	 * @param options - Behavioural options (including {@link ResolutionPolicy}) controlling how `other` is interpreted.
+	 * @returns Either a boolean or a `Promise<boolean>` depending on the selected policy.
 	 */
 	override isRelativeTo: PathIsRelativeToFn = ((
 		other: PathLike,
@@ -246,11 +290,14 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * A PathInfo object that exposes the file type and other file attributes of
-	 * this path.
+	 * Provides cached stat-like information gathered during directory iteration.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.info.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.info
+	 * @remarks
+	 *
+	 * When the path originates from {@link Path.iterdir} with `withFileTypes: true`, this accessor exposes the
+	 * cached {@link DirEntryInfo}. Calling {@link Path.isDir} or {@link Path.stat} refreshes data when necessary.
+	 *
+	 * @returns A cached {@link PathInfo} or {@link DirEntryInfo} object.
 	 */
 	get info(): PathInfo | DirEntryInfo {
 		if (!this.infoCache) {
@@ -260,9 +307,19 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
+	 * Retrieves filesystem metadata synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Pass `followSymlinks: false` to mirror `lstat`. Mirrors Node's `fs.statSync`/`fs.lstatSync` while
+	 * preserving CPython semantics.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.stat}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.stat
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns Node.js {@link Stats} describing the path.
 	 */
 	statSync(options?: { followSymlinks?: boolean }): Stats {
 		const follow = options?.followSymlinks ?? true;
@@ -272,40 +329,68 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Return the result of the `stat()` system call on this path, like
-	 * `os.stat()` does.
+	 * Returns filesystem metadata asynchronously.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.stat.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.stat
+	 * @remarks
+	 *
+	 * Accepts `followSymlinks` to align with CPython behaviour.
+	 *
+	 * @privateRemarks
+	 *
+	 * Resolves through the runtime's promise helper so it matches the async-first design.
+	 *
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns A promise that resolves with {@link Stats} information.
 	 */
 	stat(options?: { followSymlinks?: boolean }): Promise<Stats> {
 		return toPromise(() => this.statSync(options));
 	}
 
 	/**
+	 * Retrieves symlink metadata synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Delegates to `fs.lstatSync`, exposing the symlink's own information even when it points elsewhere.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.lstat}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.lstat
+	 * @returns {@link Stats} describing the link entry.
 	 */
 	lstatSync(): Stats {
 		return fs.lstatSync(this.toString());
 	}
 
 	/**
+	 * Asynchronously retrieves metadata about a symlink rather than its target.
 	 * Like {@link Path.stat}, except if the path points to a symlink, the
 	 * symlink's status information is returned, rather than its target's.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.lstat.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.lstat
+	 * @remarks
+	 *
+	 * Mirrors CPython's `Path.lstat()` and Node's `fs.lstat` behaviour.
+	 *
+	 * @returns A promise resolving to {@link Stats} for the link itself.
 	 */
 	lstat(): Promise<Stats> {
 		return toPromise(() => this.lstatSync());
 	}
 
 	/**
+	 * Checks for path existence synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Supports `followSymlinks: false` to test dangling links, matching CPython's API.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.exists}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.exists
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns `true` if the path exists (following symlinks by default).
 	 */
 	existsSync(options?: { followSymlinks?: boolean }): boolean {
 		if (options?.followSymlinks === false) {
@@ -320,20 +405,32 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Whether this path exists. This method normally follows symlinks; to check
-	 * whether a symlink exists, add the argument `followSymlinks: false`.
+	 * Resolves to `true` when the path exists.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.exists.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.exists
+	 * @remarks
+	 *
+	 * Follows symlinks by default; pass `followSymlinks: false` to check whether symlink exists.
+	 *
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns A promise resolving to a boolean indicating existence.
 	 */
 	exists(options?: { followSymlinks?: boolean }): Promise<boolean> {
 		return toPromise(() => this.existsSync(options));
 	}
 
 	/**
+	 * Tests whether the path is a directory synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Returns `false` for missing paths and surfaces symlink handling via `followSymlinks`.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.isDir}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_dir
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns `true` when the path is a directory.
 	 */
 	isDirSync(options?: { followSymlinks?: boolean }): boolean {
 		const follow = options?.followSymlinks ?? true;
@@ -348,19 +445,32 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Whether this path is a directory.
+	 * Resolves to `true` when the path points to a directory.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.is_dir.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_dir
+	 * @remarks
+	 *
+	 * Promise wrapper around {@link Path.isDirSync}; match CPython semantics with `followSymlinks`.
+	 *
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns Promise resolving to `true` when the path is a directory.
 	 */
 	isDir(options?: { followSymlinks?: boolean }): Promise<boolean> {
 		return toPromise(() => this.isDirSync(options));
 	}
 
 	/**
+	 * Tests whether the path is a regular file synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Control symlink resolution with `followSymlinks`, mirroring CPython.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.isFile}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_file
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns `true` when the path points at a file.
 	 */
 	isFileSync(options?: { followSymlinks?: boolean }): boolean {
 		const follow = options?.followSymlinks ?? true;
@@ -375,20 +485,30 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Whether this path is a regular file (also true for symlinks pointing to
-	 * regular files).
+	 * Resolves to `true` when the path points to a regular file (`also` true for
+	 * symlinks pointing to regular files).
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.is_file.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_file
+	 * @remarks
+	 *
+	 * Follows symlinks by default; pass `followSymlinks: false` to interrogate the link itself.
+	 *
+	 * @param options - Optional follow-symlink toggle.
+	 * @returns Promise resolving to `true` when the path is a regular file.
 	 */
 	isFile(options?: { followSymlinks?: boolean }): Promise<boolean> {
 		return toPromise(() => this.isFileSync(options));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.isSymlink}.
+	 * Determines synchronously whether the path points to a symbolic link.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_symlink
+	 * @remarks
+	 *
+	 * Wraps `fs.lstatSync` to mirror CPython semantics.
+	 *
+	 * @privateRemarks Synchronous variant of {@link Path.isSymlink}.
+	 *
+	 * @returns `true` when the entry is a symbolic link.
 	 */
 	isSymlinkSync(): boolean {
 		try {
@@ -399,17 +519,29 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Whether this path is a symbolic link.
+	 * Resolves to `true` when the path is a symbolic link.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.is_symlink.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.is_symlink
+	 * @remarks Promise wrapper around {@link Path.isSymlinkSync}.
+	 *
+	 * @returns Promise resolving to `true` when the entry is a symbolic link.
 	 */
 	isSymlink(): Promise<boolean> {
 		return toPromise(() => this.isSymlinkSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.iterdir}.
+	 * Enumerates directory contents synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Set `extra.withFileTypes` to receive native {@link Dirent} objects;
+	 * otherwise {@link Path} instances are returned, mirroring CPython.
+	 *
+	 * @remarks Synchronous variant of {@link Path.iterdir}.
+	 *
+	 * @param options - Optional flags controlling the return type.
+	 * @returns Directory entries as {@link Path} objects or {@link Dirent}s.
+	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
 	 */
 	iterdirSync(options?: { extra?: { withFileTypes?: false } }): Path[];
 	iterdirSync(options: { extra?: { withFileTypes: true } }): Dirent[];
@@ -436,21 +568,16 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Yield path objects of the directory contents. The children are yielded in
-	 * arbitrary order, and the special entries '.' and '..' are not included.
+	 * Resolves directory entries asynchronously as {@link Path} instances or native {@link Dirent}s.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.iterdir.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.iterdir
+	 * @remarks
 	 *
-	 * ---
+	 * Pass `extra.withFileTypes: true` to receive {@link Dirent} objects. Throws
+	 * {@link UnsupportedOperation} when the runtime does not support `withFileTypes`.
 	 *
-	 * ### Dirent parity
-	 *
-	 * Pass `extra.withFileTypes: true` to mimic Node's `fs.readdir` behaviour and
-	 * retrieve native {@link Dirent} objects. When omitted or set to `false`, the
-	 * method returns `Path` instances. The runtime must support
-	 * `fs.readdir(..., { withFileTypes: true })`; otherwise an
-	 * {@link UnsupportedOperation} error is thrown.
+	 * @param options - Optional flags controlling the return type.
+	 * @returns Promise resolving to directory entries as {@link Path} objects or {@link Dirent}s.
+	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
 	 */
 	iterdir(options?: { extra?: { withFileTypes?: false } }): Promise<Path[]>;
 	iterdir(options: { extra?: { withFileTypes: true } }): Promise<Dirent[]>;
@@ -499,22 +626,22 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Stream directory entries asynchronously without materialising the entire
-	 * directory listing.
+	 * Streams directory entries lazily using async iteration without
+	 * materialising the entire directory listing.
 	 *
-	 * ---
+	 * @remarks
 	 *
-	 * ### Streaming options
+	 * Shares the same `extra.withFileTypes` behaviour as {@link Path.iterdir}. Uses `fs.opendir` when
+	 * available to avoid materialising the whole directory; otherwise falls back to buffered reads.
+	 * Throws {@link UnsupportedOperation} when `withFileTypes` is requested but not supported.
 	 *
-	 * Accepts the same `extra.withFileTypes` option as {@link Path.iterdir}:
+	 * @privateRemarks
 	 *
-	 * - default / `false` — yields `Path` instances lazily.
-	 * - `true` — yields native {@link Dirent} objects when the runtime supports
-	 *   `fs.readdir(..., { withFileTypes: true })`, otherwise throws
-	 *   {@link UnsupportedOperation}.
+	 * Async generator variant of {@link Path.iterdir}.
 	 *
-	 * When available, `fs.opendir` is used to minimise memory usage; otherwise the
-	 * implementation falls back to `fs.readdir`.
+	 * @param options - Optional flags controlling the yielded value type.
+	 * @returns An async iterable yielding {@link Path} objects or {@link Dirent}s.
+	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
 	 */
 	iterdirStream(options?: {
 		extra?: { withFileTypes?: false };
@@ -610,8 +737,20 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
+	 * Streams directory entries synchronously using generators.
+	 *
+	 * @remarks
+	 *
+	 * Prefers `fs.opendirSync` for efficient iteration and falls back to `fs.readdirSync`.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous counterpart of {@link Path.iterdirStream}. Uses `fs.opendirSync`
 	 * when available and falls back to `fs.readdirSync` otherwise.
+	 *
+	 * @param options - Optional flags controlling the yielded value type.
+	 * @returns An iterable emitting {@link Path} objects or {@link Dirent}s.
+	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
 	 */
 	iterdirStreamSync(options?: {
 		extra?: { withFileTypes?: false };
@@ -730,33 +869,60 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
+	 * Performs a blocking glob search relative to this subtree and yield all
+	 * existing files (of any kind, including directories) matching the given
+	 * relative pattern.
+	 *
+	 * @remarks
+	 *
+	 * Requires runtime support for `fs.globSync`; otherwise {@link UnsupportedOperation} is thrown.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.glob}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.glob
+	 * @param pattern - Glob pattern interpreted relative to this path.
+	 * @param options - Options forwarded to Node's `fs.globSync`.
+	 * @returns Matching paths as {@link Path} objects.
+	 * @throws {@link UnsupportedOperation} If `fs.globSync` is unavailable.
 	 */
 	globSync(pattern: string, options?: fs.GlobOptions): Path[] {
 		return this.globSyncInternal(pattern, options);
 	}
 
 	/**
-	 * Iterate over this subtree and yield all existing files (of any kind,
-	 * including directories) matching the given relative pattern.
+	 * Globs files within this subtree asynchronously. Iterate over this subtree
+	 * and yields all existing files (of any kind, including directories)
+	 * matching the given relative pattern.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.glob.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.glob
+	 * @remarks
 	 *
-	 * ---
+	 * Matches CPython behaviour but relies on `fs.glob`. Throws {@link UnsupportedOperation} when the runtime
+	 * lacks glob support. Options are forwarded to the underlying Node implementation.
 	 *
-	 * Throws UnsupportedOperation if runtime does not provide `fs.glob`
+	 * @param pattern - Glob pattern interpreted relative to this path.
+	 * @param options - Options forwarded to Node's `fs.glob` implementation.
+	 * @returns Promise resolving to matching {@link Path} objects.
+	 * @throws {@link UnsupportedOperation} If globbing is not supported.
 	 */
 	glob(pattern: string, options?: fs.GlobOptions): Promise<Path[]> {
 		return toPromise(() => this.globSyncInternal(pattern, options));
 	}
 
 	/**
+	 * Performs a recursive glob search synchronously.
+	 *
+	 * @remarks
+	 *
+	 * Delegates to {@link Path.globSync} using a pattern that prepends the recursive `"**"` segment.
+	 *
+	 * @privateRemarks
+	 *
 	 * Synchronous variant of {@link Path.rglob}.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rglob
+	 * @param pattern - Glob pattern to evaluate recursively.
+	 * @param options - Options forwarded to Node's glob implementation.
+	 * @returns Matching {@link Path} objects.
 	 */
 	rglobSync(pattern: string, options?: fs.GlobOptions): Path[] {
 		const parser = this.parser;
@@ -768,116 +934,165 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Recursively yield all existing files (of any kind, including directories)
-	 * matching the given relative pattern, anywhere in this subtree.
+	 * Asynchronously performs a recursive glob in this subtree, and yields all
+	 * existing files (of any kind, including directories) matching the given
+	 * relative pattern.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.rglob.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rglob
+	 * @remarks
+	 *
+	 * Equivalent to prefixing the pattern with the recursive `"**"` segment and calling {@link Path.glob}.
+	 * `fs.glob` support.
+	 *
+	 * @param pattern - Glob pattern to evaluate recursively.
+	 * @param options - Options forwarded to Node's glob implementation.
+	 * @returns Promise resolving to matching {@link Path} objects.
+	 * @throws {@link UnsupportedOperation} If globbing is not supported by the runtime.
 	 */
 	rglob(pattern: string, options?: fs.GlobOptions): Promise<Path[]> {
 		return toPromise(() => this.rglobSync(pattern, options));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.readText}.
+	 * Read the file as text using the provided encoding.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_text
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.readText} but executes synchronously.
+	 *
+	 * @param encoding - Text encoding (defaults to `"utf8"`).
+	 * @returns File contents as a string.
 	 */
 	readTextSync(encoding: BufferEncoding = "utf8"): string {
 		return fs.readFileSync(this.toString(), { encoding });
 	}
 
 	/**
-	 * Open the file in text mode, read it, and close the file.
+	 * Read the file as text using the provided encoding and return a promise
+	 * that resolves to the decoded contents of pointed-to file as a string.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.read_text.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_text
+	 * @param encoding - Text encoding (defaults to `"utf8"`).
+	 * @returns Promise resolving to the text contents.
 	 */
 	readText(encoding: BufferEncoding = "utf8"): Promise<string> {
 		return toPromise(() => this.readTextSync(encoding));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.readBytes}.
+	 * Read the file as raw bytes.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_bytes
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.readBytes} but executes synchronously.
+	 *
+	 * @returns File contents as a {@link Buffer}.
 	 */
 	readBytesSync(): Buffer {
 		return fs.readFileSync(this.toString());
 	}
 
 	/**
-	 * Open the file in bytes mode, read it, and close the file.
+	 * Read the file as raw bytes and return a promise that resolves to the
+	 * binary contents of the pointed-to file as a bytes object.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.read_bytes.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_bytes
+	 * @returns Promise resolving to the binary contents.
 	 */
 	readBytes(): Promise<Buffer> {
 		return toPromise(() => this.readBytesSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.writeText}.
+	 * Write the given text to the file using the provided encoding.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_text
+	 * An existing file of the same name is overwritten.
+	 *
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.writeText} but executes synchronously.
+	 *
+	 * @param data - Text to persist.
+	 * @param encoding - Encoding to use (defaults to `"utf8"`).
 	 */
 	writeTextSync(data: string, encoding: BufferEncoding = "utf8"): void {
 		fs.writeFileSync(this.toString(), data, { encoding });
 	}
 
 	/**
-	 * Open the file in text mode, write to it, and close the file.
+	 * Asynchronously write the given text to the file using the provided encoding.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.write_text.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_text
+	 * An existing file of the same name is overwritten.
+	 *
+	 * @param data - Text to persist.
+	 * @param encoding - Encoding to use (defaults to `"utf8"`).
+	 * @returns Promise that settles once the write completes.
 	 */
 	writeText(data: string, encoding: BufferEncoding = "utf8"): Promise<void> {
 		return toPromise(() => this.writeTextSync(data, encoding));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.writeBytes}.
+	 * Write raw bytes to the file.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_bytes
+	 * An existing file of the same name is overwritten.
+	 *
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.writeBytes} but executes synchronously.
+	 *
+	 * @param data - Data to persist.
 	 */
 	writeBytesSync(data: Buffer | Uint8Array): void {
 		fs.writeFileSync(this.toString(), data);
 	}
 
 	/**
-	 * Open the file in bytes mode, write to it, and close the file.
+	 * Asynchronously write raw bytes to the file.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.write_bytes.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_bytes
+	 * An existing file of the same name is overwritten.
+	 *
+	 * @param data - Data to persist.
+	 * @returns Promise that settles once the write completes.
 	 */
 	writeBytes(data: Buffer | Uint8Array): Promise<void> {
 		return toPromise(() => this.writeBytesSync(data));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.open}.
+	 * Open the file with the given mode using the synchronous helper.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.open
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.open} but executes synchronously.
+	 *
+	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
+	 * @returns A Node {@link fs.ReadStream} configured for the provided mode.
 	 */
 	openSync(mode = "r"): fs.ReadStream {
 		return magicOpen(this.toString(), { mode });
 	}
 
 	/**
-	 * Open the file pointed to by this path and return a file object, as the
-	 * built-in `open()` function does.
+	 * Open the file with the given mode and return a Node.js stream-like handle.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.open.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.open
+	 * @remarks
+	 *
+	 * Delegates to {@link magicOpen} to match CPython defaults while
+	 * still returning a Node.js compatible stream proxy.
+	 *
+	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
+	 * @returns Promise resolving to a {@link fs.ReadStream}.
 	 */
 	open(mode = "r"): Promise<fs.ReadStream> {
 		return toPromise(() => this.openSync(mode));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.touch}.
+	 * Create the file or update its timestamps synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.touch
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.touch} but executes synchronously.
+	 *
+	 * @param options - File creation behaviour flags (`mode`, `existOk`).
 	 */
 	touchSync(options?: { mode?: number; existOk?: boolean }): void {
 		const existOk = options?.existOk ?? true;
@@ -895,19 +1110,28 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Create this file with the given access mode, if it doesn't exist.
+	 * Create the file or update its timestamps with optional mode overrides.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.touch.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.touch
+	 * @remarks
+	 *
+	 * Implements CPython semantics where `existOk` controls whether
+	 * existing files are tolerated.
+	 *
+	 * @param options - File creation behaviour flags (`mode`, `existOk`).
+	 * @returns Promise that settles once the touch operation completes.
 	 */
 	touch(options?: { mode?: number; existOk?: boolean }): Promise<void> {
 		return toPromise(() => this.touchSync(options));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.mkdir}.
+	 * Create a directory synchronously with optional `parents` and `existOk`.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.mkdir
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.mkdir} but executes synchronously.
+	 *
+	 * @param options - POSIX-style creation options (`parents`, `existOk`, `mode`).
 	 */
 	mkdirSync(options?: {
 		parents?: boolean;
@@ -930,10 +1154,15 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Create a new directory at this given path.
+	 * Create a directory with optional `parents` and `existOk` semantics.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.mkdir.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.mkdir
+	 * @remarks
+	 *
+	 * Delegates to Node's `fs.mkdir` while matching CPython defaults
+	 * for parent creation and error handling.
+	 *
+	 * @param options - POSIX-style creation options (`parents`, `existOk`, `mode`).
+	 * @returns Promise that settles once the directory exists.
 	 */
 	mkdir(options?: {
 		parents?: boolean;
@@ -944,9 +1173,13 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.unlink}.
+	 * Remove the file or link synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.unlink
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.unlink} but executes synchronously.
+	 *
+	 * @param options - Deletion behaviour flags (`missingOk`).
 	 */
 	unlinkSync(options?: { missingOk?: boolean }): void {
 		try {
@@ -960,39 +1193,53 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Remove this file or link. If the path is a directory, use {@link Path.rmdir}
-	 * instead.
+	 * Remove this file or link. Use {@link Path.rmdir} for directories.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.unlink.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.unlink
+	 * @remarks
+	 *
+	 * Matches CPython behavior for `missingOk`, mapping `ENOENT` to the
+	 * expected silent outcome.
+	 *
+	 * @param options - Deletion behaviour flags (`missingOk`).
+	 * @returns Promise that settles once the file is removed.
 	 */
 	unlink(options?: { missingOk?: boolean }): Promise<void> {
 		return toPromise(() => this.unlinkSync(options));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.rmdir}.
+	 * Remove the directory synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rmdir
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.rmdir} but executes synchronously.
 	 */
 	rmdirSync(): void {
 		fs.rmdirSync(this.toString());
 	}
 
 	/**
-	 * Remove this directory. The directory must be empty.
+	 * Remove this directory; the directory must already be empty.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.rmdir.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rmdir
+	 * @remarks
+	 *
+	 * Uses Node's `fs.rmdir` to mirror CPython semantics.
+	 *
+	 * @returns Promise that settles once the directory is removed.
 	 */
 	rmdir(): Promise<void> {
 		return toPromise(() => this.rmdirSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.rename}.
+	 * Rename the file or directory to a new target synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rename
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.rename} but executes synchronously.
+	 *
+	 * @param target - Destination path or string.
+	 * @returns A {@link Path} representing the destination.
 	 */
 	renameSync(target: PathLike): Path {
 		const destination =
@@ -1002,20 +1249,29 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Rename this path to the target path. Returns the new path instance pointing
-	 * to the target path.
+	 * Rename this path to the given target and return the new path instance.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.rename.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.rename
+	 * @remarks
+	 *
+	 * Matches CPython semantics while returning a new {@link Path}
+	 * pointing at the destination.
+	 *
+	 * @param target - Destination path or string.
+	 * @returns Promise resolving to a {@link Path} representing the destination.
 	 */
 	rename(target: PathLike): Promise<Path> {
 		return toPromise(() => this.renameSync(target));
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.replace}.
+	 * Replace the file or directory synchronously, overwriting the destination.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.replace
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.replace} but executes synchronously.
+	 *
+	 * @param target - Destination path or string.
+	 * @returns A {@link Path} representing the destination.
 	 */
 	replaceSync(target: PathLike): Path {
 		const destination =
@@ -1025,11 +1281,15 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Rename this path to the target path, overwriting if that path exists.
-	 * Returns the new path instance pointing to the target path.
+	 * Replace the target path, overwriting it if necessary, and return the new
+	 * {@link Path}.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.replace.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.replace
+	 * @remarks
+	 *
+	 * Overwrite behavior matches CPython while relying on Node's rename.
+	 *
+	 * @param target - Destination path or string.
+	 * @returns Promise resolving to a {@link Path} representing the destination.
 	 */
 	replace(target: PathLike): Promise<Path> {
 		return toPromise(() => this.replaceSync(target));
@@ -1049,9 +1309,15 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.copy}.
+	 * Recursively copy the file or directory tree to the destination synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.copy
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.copy} but executes synchronously.
+	 *
+	 * @param target - Destination path or string.
+	 * @param options - Behaviour flags for metadata preservation and symlink handling.
+	 * @returns The destination {@link Path}.
 	 */
 	copySync(
 		target: PathLike,
@@ -1069,10 +1335,16 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Recursively copy this file or directory tree to the given destination.
+	 * Recursively copy this file or directory tree to the destination.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.copy.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.copy
+	 * @remarks
+	 *
+	 * Uses Node's `fs.cp` to match CPython's recursive behavior while
+	 * exposing options for metadata and symlink handling.
+	 *
+	 * @param target - Destination path or string.
+	 * @param options - Behaviour flags for metadata preservation and symlink handling.
+	 * @returns Promise resolving to the destination {@link Path}.
 	 */
 	copy(
 		target: PathLike,
@@ -1082,9 +1354,13 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.readlink}.
+	 * Read the target of a symbolic link synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.readlink
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.readlink} but executes synchronously.
+	 *
+	 * @returns A {@link Path} representing the symlink target.
 	 */
 	readlinkSync(): Path {
 		const resolved = fs.readlinkSync(this.toString());
@@ -1094,17 +1370,25 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	/**
 	 * Return the path to which the symbolic link points.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.readlink.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.readlink
+	 * @remarks
+	 *
+	 * Resolves the link via Node's `fs.readlink` and wraps it in a
+	 * {@link Path} instance.
+	 *
+	 * @returns Promise resolving to a {@link Path} representing the symlink target.
 	 */
 	readlink(): Promise<Path> {
 		return toPromise(() => this.readlinkSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.resolve}.
+	 * Resolve the path synchronously, following symlinks and normalizing.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.resolve
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.resolve} but executes synchronously.
+	 *
+	 * @returns A {@link Path} pointing to the resolved location.
 	 */
 	resolveSync(): Path {
 		const resolved = nodepath.resolve(this.toString());
@@ -1112,41 +1396,55 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Make the path absolute, resolving all symlinks on the way and also
-	 * normalizing it.
+	 * Make the path absolute, resolving symlinks and normalizing segments.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.resolve.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.resolve
+	 * @remarks
+	 *
+	 * Uses Node's resolver to match CPython behavior, including symlink
+	 * expansion.
+	 *
+	 * @returns Promise resolving to a {@link Path} pointing to the resolved location.
 	 */
 	resolve(): Promise<Path> {
 		return toPromise(() => this.resolveSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.absolute}.
+	 * Return an absolute path without resolving symlinks, synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.absolute
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.absolute} but executes synchronously.
+	 *
+	 * @returns An absolute {@link Path}.
 	 */
 	absoluteSync(): Path {
 		return this.isAbsolute() ? (this as Path) : this.resolveSync();
 	}
 
 	/**
-	 * Return an absolute version of this path. No normalization or symlink
-	 * resolution is performed. Use {@link Path.resolve} to resolve symlinks and
-	 * remove '..' segments.
+	 * Return an absolute version of this path without resolving symlinks.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.absolute.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.absolute
+	 * @remarks
+	 *
+	 * Delegates to {@link Path.resolve} when the path is relative,
+	 * mirroring CPython's `absolute()` behavior.
+	 *
+	 * @returns Promise resolving to an absolute {@link Path}.
 	 */
 	absolute(): Promise<Path> {
 		return toPromise(() => this.absoluteSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.expandUser}.
+	 * Expand leading `~` markers synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.expanduser
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.expandUser} but executes synchronously.
+	 *
+	 * @returns A {@link Path} with user-home prefixes expanded.
+	 * @throws {@link Error} When the home directory cannot be determined.
 	 */
 	expandUserSync(): Path {
 		const tail = this.tailParts();
@@ -1162,20 +1460,28 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Return a new path with expanded `~` and `~user` constructs (as returned by
-	 * `os.path.expanduser`).
+	 * Return a new path with expanded `~` and `~user` constructs.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.expanduser.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.expanduser
+	 * @remarks
+	 *
+	 * Uses the current platform home directory lookup to mirror CPython
+	 * semantics.
+	 *
+	 * @returns Promise resolving to a {@link Path} with user-home prefixes expanded.
+	 * @throws {@link Error} When the home directory cannot be determined.
 	 */
 	expandUser(): Promise<Path> {
 		return toPromise(() => this.expandUserSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.cwd}.
+	 * Create a {@link Path} pointing to the current working directory synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.cwd
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.cwd} but executes synchronously.
+	 *
+	 * @returns A {@link Path} instance targeting the current working directory.
 	 */
 	static cwdSync(): Path {
 		const cwd = process.cwd();
@@ -1187,17 +1493,24 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	/**
 	 * Return a new path pointing to the current working directory.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.cwd.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.cwd
+	 * @remarks
+	 *
+	 * Mirrors the CPython API and caches the string representation for
+	 * parity with the synchronous constructor.
+	 *
+	 * @returns Promise resolving to a {@link Path} instance targeting the current working directory.
 	 */
 	static cwd(): Promise<Path> {
 		return toPromise(() => Path.cwdSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.home}.
+	 * Return the user's home directory synchronously.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.home
+	 * @remarks Mirrors {@link Path.home} but executes synchronously.
+	 *
+	 * @returns A {@link Path} instance targeting the user's home directory.
+	 * @throws {@link Error} When the home directory cannot be determined.
 	 */
 	static homeSync(): Path {
 		const home = nodeos.homedir();
@@ -1206,19 +1519,28 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Return a new path pointing to `expanduser('~')`.
+	 * Return a new path pointing to the user's home directory.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.home.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.home
+	 * @remarks
+	 *
+	 * Leverages Node's home directory detection to match CPython.
+	 *
+	 * @returns Promise resolving to a {@link Path} instance targeting the user's home directory.
+	 * @throws {@link Error} When the home directory cannot be determined.
 	 */
 	static home(): Promise<Path> {
 		return toPromise(() => Path.homeSync());
 	}
 
 	/**
-	 * Synchronous variant of {@link Path.walk}.
+	 * Traverse the directory tree synchronously and return the walk tuples.
 	 *
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.walk
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.walk} but executes synchronously.
+	 *
+	 * @param options - Control for traversal order (`topDown`).
+	 * @returns An array of {@link WalkTuple} entries.
 	 */
 	walkSync(options?: { topDown?: boolean }): WalkTuple[] {
 		const topDown = options?.topDown ?? true;
@@ -1239,10 +1561,15 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Walk the directory tree from this directory, similar to `os.walk()`.
+	 * Walk the directory tree from this directory.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.walk.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.walk
+	 * @remarks
+	 *
+	 * Returns {@link WalkTuple} entries while delegating to the
+	 * synchronous walker via {@link toPromise}.
+	 *
+	 * @param options - Control for traversal order (`topDown`).
+	 * @returns Promise resolving to an array of {@link WalkTuple} entries.
 	 */
 	walk(options?: { topDown?: boolean }): Promise<WalkTuple[]> {
 		return toPromise(() => this.walkSync(options));
@@ -1250,10 +1577,11 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 }
 
 /**
- * Path subclass for non-Windows systems. On a POSIX system, instantiating a
- * Path should return this object.
+ * POSIX-flavored {@link Path} implementation.
  *
- * Docstring copied from CPython 3.14 pathlib.PosixPath.
+ * @remarks Instantiated automatically when the runtime reports a POSIX
+ * platform. Instantiate directly to manipulate POSIX paths on any host.
+ *
  * @see https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath
  */
 export class PosixPath extends Path {
@@ -1261,14 +1589,18 @@ export class PosixPath extends Path {
 }
 
 /**
- * Path subclass for Windows systems. On a Windows system, instantiating a Path
- * should return this object.
+ * Windows-flavored {@link Path} implementation.
  *
- * Docstring copied from CPython 3.14 pathlib.WindowsPath.
+ * @remarks Instantiated automatically when the runtime reports a Windows
+ * platform. Instantiate directly to manipulate Windows paths on any host.
+ *
  * @see https://docs.python.org/3/library/pathlib.html#pathlib.WindowsPath
  */
 export class WindowsPath extends Path {
 	static override parser = windowsParser;
 }
 
+/**
+ * Alias for the platform-appropriate concrete path class ({@link WindowsPath} on Windows, otherwise {@link PosixPath}).
+ */
 export const DefaultPath = isWindows ? WindowsPath : PosixPath;

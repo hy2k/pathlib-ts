@@ -1,14 +1,58 @@
 import nodepath from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+/**
+ * Indicates whether the current runtime reports Windows-style path semantics.
+ *
+ * @remarks
+ *
+ * This is derived from {@link nodepath.sep}. Consumers typically use the flag to toggle
+ * platform-specific logic such as case folding or default slash direction. The value is
+ * computed once at module evaluation time and cached for subsequent imports.
+ *
+ * @see https://docs.python.org/3/library/pathlib.html#module-pathlib
+ */
 export const isWindows = nodepath.sep === "\\";
+
+/**
+ * POSIX `node:path` parser used to mirror CPython's POSIX flavour.
+ *
+ * @remarks
+ *
+ * Exposed for advanced scenarios that need to parse strings using the same low-level
+ * implementation as {@link PurePosixPath}. Use {@link PurePath.parser} instead when you
+ * merely need to inspect the active parser for a path instance.
+ */
 export const posixParser = nodepath.posix;
+
+/**
+ * Windows `node:path` parser used to mirror CPython's Windows flavour.
+ *
+ * @remarks
+ *
+ * This exposes the native join, normalize, and split rules that back {@link PureWindowsPath}.
+ * It is primarily useful for integrations that must interoperate with `PurePath` internals.
+ */
 export const windowsParser = nodepath.win32;
 
 function escapeRegExp(value: string): string {
 	return value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
 }
 
+/**
+ * Normalizes a path string so that it is safe to pass to the provided parser.
+ *
+ * @remarks
+ *
+ * CPython accepts both forward and backward slashes when parsing Windows paths. This helper
+ * mirrors that behaviour by rewriting alternate separators (`/`) to the parser's separator
+ * before further processing. POSIX parsers are returned unchanged because they do not have an
+ * alternate separator.
+ *
+ * @param parser - The platform-aware parser associated with the target path flavour.
+ * @param value - The raw path string supplied by the caller.
+ * @returns A normalized string that can be safely parsed or joined via `node:path` helpers.
+ */
 export function normalizeForParser(
 	parser: nodepath.PlatformPath,
 	value: string,
@@ -160,9 +204,46 @@ class PathParents implements Iterable<PurePath> {
 	}
 }
 
+/**
+ * Union of string-like inputs accepted by path constructors and helpers.
+ *
+ * @remarks
+ *
+ * CPython accepts both `str` and path objects for most APIs. The TypeScript port mirrors this
+ * behaviour by accepting plain strings alongside {@link PurePath} instances. Concrete
+ * {@link Path} objects also satisfy the contract because they extend `PurePath`.
+ */
 export type PathLike = string | PurePath;
 
 /**
+ * Immutable filesystem path that never performs I/O.
+ *
+ * @remarks
+ *
+ * This mirrors CPython's {@link https://docs.python.org/3/library/pathlib.html#pure-paths | `pathlib.PurePath`}.
+ * Separators are normalised according to the active parser (POSIX vs Windows), parts are exposed via
+ * flavour-aware casing, and joining semantics match the reference implementation. Prefer this class when you
+ * need deterministic, purely lexical path manipulation. Use {@link Path} to add filesystem-aware operations.
+ *
+ * The constructor preserves the concrete subclass by default: instantiating {@link PurePath} chooses the
+ * flavour for the current runtime, whereas {@link PurePosixPath} and {@link PureWindowsPath} can be requested
+ * explicitly for cross-platform tooling.
+ *
+ * @example Creating a nested PurePath without touching the filesystem
+ * ```ts
+ * import { PurePath } from "pathlib-ts";
+ *
+ * const project = new PurePath("/srv/app");
+ * const config = project.joinpath("pyproject.toml");
+ *
+ * console.log(config.toString()); // '/srv/app/pyproject.toml'
+ * console.log(config.isAbsolute()); // true
+ * ```
+ *
+ * @see https://docs.python.org/3/library/pathlib.html#pure-paths
+ *
+ * @privateRemarks
+ *
  * Base class for manipulating paths without I/O.
  *
  * PurePath represents a filesystem path and offers operations which don't
@@ -170,9 +251,6 @@ export type PathLike = string | PurePath;
  * PurePath will return either a PurePosixPath or a PureWindowsPath object.
  * You can also instantiate either of these classes directly, regardless of
  * your system.
- *
- * Docstring copied from CPython 3.14 pathlib.PurePath.
- * @see https://docs.python.org/3/library/pathlib.html#pure-paths
  */
 export class PurePath {
 	static parser: nodepath.PlatformPath = isWindows
@@ -251,19 +329,34 @@ export class PurePath {
 	}
 
 	/**
-	 * Construct a new path object from any number of path-like objects.
+	 * Builds a sibling path instance of the same type by combining additional segments.
 	 *
-	 * Subclasses may override this method to customize how new path objects are
-	 * created from methods like `iterdir()`.
+	 * @remarks
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.with_segments.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.with_segments
+	 * This helper powers APIs such as {@link PurePath.joinpath} and directory iteration. Override it in
+	 * subclasses when you need to preserve extra metadata on derived paths (for example, custom session identifiers).
+	 *
+	 * @param segments - Additional path fragments to combine. Absolute or anchored segments replace the
+	 * accumulated path, mirroring CPython semantics.
+	 * @returns A new path instance of the same concrete type.
 	 */
 	withSegments<T extends PurePath>(this: T, ...segments: Array<PathLike>): T {
 		const ctor = this.constructor as new (...args: Array<PathLike>) => T;
 		return new ctor(...segments);
 	}
 
+	/**
+	 * Removes trailing segments from the path while preserving the anchor.
+	 *
+	 * @remarks
+	 *
+	 * This is primarily used internally to synthesise parent anchors, but it can be useful when you need
+	 * to truncate an arbitrary number of lexical components without re-parsing the string form.
+	 *
+	 * @param drop - Number of segments to discard from the right-hand side. Values greater than the path
+	 * length clamp to zero.
+	 * @returns A new path of the same type with the requested segments removed.
+	 */
 	dropSegments<T extends PurePath>(this: T, drop: number): T {
 		const { drive, root } = this.anchorParts();
 		const tail = this.tailParts();
@@ -275,12 +368,16 @@ export class PurePath {
 	}
 
 	/**
-	 * Combine this path with one or several arguments, and return a new path
-	 * representing either a subpath (if all arguments are relative paths) or a
-	 * totally different path (if one of the arguments is anchored).
+	 * Produces a new path by appending additional segments to the current instance.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.joinpath.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.joinpath
+	 * @remarks
+	 *
+	 * Relative segments extend the existing location, while an absolute or anchored segment replaces the
+	 * accumulated path, matching CPython and Node path joining semantics. The return type preserves the concrete
+	 * subclass (Posix or Windows).
+	 *
+	 * @param segments - Path fragments to append in order.
+	 * @returns A new path instance with the appended segments.
 	 */
 	joinpath<T extends PurePath>(this: T, ...segments: Array<PathLike>): T {
 		return this.withSegments(this, ...segments);
@@ -309,10 +406,14 @@ export class PurePath {
 	}
 
 	/**
-	 * Return the string representation of the path with forward (/) slashes.
+	 * Returns the string representation of the path with forward (/) slashes, regardless of platform.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.as_posix.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.as_posix
+	 * @remarks
+	 *
+	 * Useful when emitting URLs or interoperating with tooling that expects POSIX separators. On POSIX hosts
+	 * the string is returned unchanged; on Windows, backslashes are converted.
+	 *
+	 * @returns The path rendered with `/` separators.
 	 */
 	asPosix(): string {
 		const parser = (this.constructor as typeof PurePath).parser;
@@ -321,10 +422,14 @@ export class PurePath {
 	}
 
 	/**
-	 * The drive prefix (letter or UNC path), if any.
+	 * Gets the drive prefix for Windows-style paths, or an empty string on POSIX.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.drive.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.drive
+	 * @remarks
+	 *
+	 * UNC shares are treated as drives. On non-Windows parsers this value is always empty unless manually
+	 * constructed via {@link PureWindowsPath}.
+	 *
+	 * @returns Drive text for Windows paths or an empty string when no drive is present.
 	 */
 	get drive(): string {
 		this.ensureParsed();
@@ -332,10 +437,15 @@ export class PurePath {
 	}
 
 	/**
-	 * The root of the path, if any.
+	 * A string representing the (local or global) root, if any.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.root.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.root
+	 * @remarks
+	 *
+	 * Gets the root component (such as `/` or `\\`) following the drive, when present.
+	 * For UNC paths the root reflects the separator after the host/share. POSIX roots collapse repeated
+	 * slashes according to CPython rules.
+	 *
+	 * @returns Root component following the drive (for example `/` or `\\`).
 	 */
 	get root(): string {
 		this.ensureParsed();
@@ -345,19 +455,36 @@ export class PurePath {
 	/**
 	 * The concatenation of the drive and root, or ''.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.anchor.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.anchor
+	 * @remarks
+	 *
+	 * The anchor uniquely identifies the starting point of the path, allowing callers to detect rooted
+	 * inputs before manipulating relative segments.
+	 *
+	 * @returns The drive followed by the root (for example `c:\\`) or an empty string.
 	 */
 	get anchor(): string {
 		return this.drive + this.root;
 	}
 
 	/**
-	 * An object providing sequence-like access to the components in the filesystem
-	 * path.
+	 * Returns the normalized path components as an array of strings.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.parts.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.parts
+	 * @remarks
+	 *
+	 * The first element is the anchor when present. Use this when you need positional access to segments
+	 * without re-parsing the representation.
+	 *
+	 * @example
+	 *
+	 * ```ts
+	 * const p = new PurePath('/usr/bin/python3')
+	 * p.parts // ['/', 'usr', 'bin', 'python3']
+	 *
+	 * const p = new PureWindowsPath('c:/Program Files/PSF')
+	 * p.parts // ['c:\\', 'Program Files', 'PSF']
+	 * ```
+	 *
+	 * @returns An array of canonical segments including the anchor when present.
 	 */
 	get parts(): string[] {
 		const tail = this.tailParts();
@@ -366,10 +493,14 @@ export class PurePath {
 	}
 
 	/**
-	 * The logical parent of the path.
+	 * Returns the lexical (logical) parent of the current path.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.parent.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.parent
+	 * @remarks
+	 *
+	 * Anchors (e.g. `/` or drive roots) are idempotent parents of themselves. To walk physical directories,
+	 * combine this with {@link Path.resolve} to eliminate `..` components and symlinks.
+	 *
+	 * @returns The lexical parent, or `this` when already at an anchor.
 	 */
 	get parent(): PurePath {
 		const tail = this.tailParts();
@@ -379,20 +510,28 @@ export class PurePath {
 	}
 
 	/**
-	 * A sequence of this path's logical parents.
+	 * Provides indexed access to the sequence of lexical (logical) ancestors of the path.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.parents.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.parents
+	 * @remarks
+	 *
+	 * The returned object implements {@link Iterable}, enabling constructs like `for (const parent of
+	 * path.parents)`. This mirrors CPython behaviour and honours flavour-specific casing rules.
+	 *
+	 * @returns A sequence-like view over ancestor paths.
 	 */
 	get parents(): PathParents {
 		return new PathParents(this);
 	}
 
 	/**
-	 * The final path component, if any.
+	 * Returns the final path component as a string, excluding any anchor, if any.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.name.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.name
+	 * @remarks
+	 *
+	 * This mirrors CPython's `name` property and respects flavour casing. For directory entries surfaced via
+	 * {@link Path.iterdir}, prefer this over {@link fs.Dirent.name} when you need canonical path semantics.
+	 *
+	 * @returns Final segment of the path without drive or root information.
 	 */
 	get name(): string {
 		const tail = this.tailParts();
@@ -402,10 +541,14 @@ export class PurePath {
 	}
 
 	/**
-	 * The final component's last suffix, if any, including the leading period.
+	 * Returns the rightmost suffix (including the leading dot) for the last path segment.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.suffix.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.suffix
+	 * @remarks
+	 *
+	 * Matches CPython semantics, including treating a standalone dot as a valid suffix in 3.14+. Use this
+	 * when you need to dispatch on file extensions without mutating the path.
+	 *
+	 * @returns The final suffix (for example `.ts`) or an empty string when absent.
 	 */
 	get suffix(): string {
 		const name = this.name;
@@ -416,10 +559,14 @@ export class PurePath {
 	}
 
 	/**
-	 * The final component's suffixes, if any, including the leading periods.
+	 * Lists all suffixes (extensions) attached to the final path component, if any.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.suffixes.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.suffixes
+	 * @remarks
+	 *
+	 * Useful for detecting compound extensions like `.tar.gz`. The behaviour matches CPython and keeps case
+	 * sensitivity aligned with the underlying parser.
+	 *
+	 * @returns An array of suffix strings in left-to-right order.
 	 */
 	get suffixes(): string[] {
 		const name = this.name;
@@ -431,10 +578,14 @@ export class PurePath {
 	}
 
 	/**
-	 * The final path component, minus its last suffix.
+	 * Returns the final component without its last suffix.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.stem.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.stem
+	 * @remarks
+	 *
+	 * If the name has multiple suffixes, only the final one is removed. Use {@link PurePath.withSuffix} or
+	 * {@link PurePath.withStem} to create modified paths.
+	 *
+	 * @returns The last component minus its rightmost suffix.
 	 */
 	get stem(): string {
 		const name = this.name;
@@ -446,10 +597,16 @@ export class PurePath {
 	}
 
 	/**
-	 * Return a new path with the file name changed.
+	 * Returns a new path with the final component replaced by the provided name.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.with_name.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.with_name
+	 * @remarks
+	 *
+	 * Input validation mirrors CPython: path separators and empty names are rejected. Use this when you need to
+	 * replace the leaf node while keeping the same directory.
+	 *
+	 * @param name - Replacement leaf component. Must not contain path separators.
+	 * @returns A new path with the same anchor and parent but a different final component.
+	 * @throws {@link Error} If the name is empty, `.` or contains separators.
 	 */
 	withName(name: string): PurePath {
 		const parser = (this.constructor as typeof PurePath).parser;
@@ -476,8 +633,14 @@ export class PurePath {
 	 * add the given suffix. If the given suffix is an empty string, remove the
 	 * suffix from the path.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.with_suffix.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.with_suffix
+	 * @remarks
+	 *
+	 * Provide `""` to strip the suffix entirely. The argument must start with a dot unless it is empty.
+	 * Behaviour matches CPython, including validation of empty stems.
+	 *
+	 * @param suffix - New suffix starting with a dot, or an empty string to remove it.
+	 * @returns A new path with the updated suffix.
+	 * @throws {@link Error} If the suffix does not start with `.` or the path lacks a stem.
 	 */
 	withSuffix(suffix: string): PurePath {
 		if (suffix && !suffix.startsWith(".")) {
@@ -489,10 +652,16 @@ export class PurePath {
 	}
 
 	/**
-	 * Return a new path with the stem changed.
+	 * Returns a new path with the stem component changed.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.with_stem.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.with_stem
+	 * @remarks
+	 *
+	 * The current suffix is preserved. Passing an empty stem is only allowed when the path has no suffix,
+	 * matching CPython behaviour.
+	 *
+	 * @param stem - New stem string.
+	 * @returns A new path where the last component has the provided stem.
+	 * @throws {@link Error} If the path has a suffix and `stem` is empty.
 	 */
 	withStem(stem: string): PurePath {
 		const currentSuffix = this.suffix;
@@ -503,14 +672,18 @@ export class PurePath {
 
 	/**
 	 * Return the relative path to another path identified by the passed
-	 * arguments. If the operation is not possible (because this is not related
-	 * to the other path), raise ValueError.
+	 * arguments.
 	 *
-	 * The *walk_up* parameter controls whether `..` may be used to resolve the
-	 * path.
+	 * @remarks
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.relative_to.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.relative_to
+	 * By default the operation is purely lexical and raises if the target is not an ancestor. Pass
+	 * `options.walkUp = true` to allow `..` segments. This mirrors CPython and is the foundation for
+	 * {@link Path.relativeTo} policies.
+	 *
+	 * @param other - Anchor path used as the reference point.
+	 * @param options - Optional lexical behaviour toggles (`walkUp` mirrors CPython 3.12+).
+	 * @returns A new path relative to `other`.
+	 * @throws {@link Error} When anchors differ or no lexical relationship exists (and `walkUp` is false).
 	 */
 	relativeTo(other: PathLike, options?: { walkUp?: boolean }): PurePath {
 		const target = other instanceof PurePath ? other : this.withSegments(other);
@@ -546,10 +719,15 @@ export class PurePath {
 	}
 
 	/**
-	 * Return True if the path is relative to another path or False.
+	 * Returns `true` when the path can be expressed relative to another path without leaving its subtree.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.is_relative_to.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.is_relative_to
+	 * @remarks
+	 *
+	 * This is a lexical check that does not hit the filesystem. It aligns with CPython's `is_relative_to` and
+	 * powers {@link Path.isRelativeTo} before the async policy layer.
+	 *
+	 * @param other - Anchor used to determine lexical containment.
+	 * @returns `true` when `other` is a lexical ancestor or the same path.
 	 */
 	isRelativeTo(other: PathLike): boolean {
 		const target = other instanceof PurePath ? other : this.withSegments(other);
@@ -562,10 +740,13 @@ export class PurePath {
 	}
 
 	/**
-	 * True if the path is absolute (has both a root and, if applicable, a drive).
+	 * Indicates whether the path is anchored (has a root and optional drive).
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.is_absolute.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.is_absolute
+	 * @remarks
+	 *
+	 * Matches CPython semantics and honours the active parser.
+	 *
+	 * @returns `true` when the path has a root (and drive for Windows), otherwise `false`.
 	 */
 	isAbsolute(): boolean {
 		return Boolean(this.root) || !!this.drive;
@@ -597,34 +778,46 @@ export class PurePath {
 	}
 
 	/**
-	/**
-	 * Return True if this path matches the given glob-style pattern. The pattern
-	 * is matched against the entire path.
+	 * Tests whether the entire path matches a glob-style pattern.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.full_match.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.full_match
+	 * @remarks
+	 *
+	 * Case sensitivity defaults to the flavour (POSIX vs Windows) but can be overridden. No filesystem access
+	 * occurs; matching is lexical.
+	 *
+	 * @param pattern - Glob-style pattern to check. Accepts strings or other pure paths.
+	 * @param options - Optional case sensitivity override.
+	 * @returns `true` when the entire path matches the pattern.
 	 */
 	fullMatch(pattern: PathLike, options?: { caseSensitive?: boolean }): boolean {
 		return this.matchAgainst(pattern, options?.caseSensitive, true);
 	}
 
 	/**
-	 * Return True if this path matches the given pattern. If the pattern is
-	 * relative, matching is done from the right; otherwise the entire path is
-	 * matched. The recursive wildcard '**' is not supported by this method.
+	 * Checks whether the path matches a non-recursive glob pattern.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.match.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.match
+	 * @remarks
+	 *
+	 * Relative patterns are matched from the right-hand side; recursive `**` is not supported, mirroring
+	 * CPython. Use {@link PurePath.fullMatch} when you need to inspect the entire path.
+	 *
+	 * @param pattern - Pattern to evaluate. Recursive wildcards are treated like `*`.
+	 * @param options - Optional case sensitivity override.
+	 * @returns `true` when the suffix of the path satisfies the pattern.
 	 */
 	match(pattern: PathLike, options?: { caseSensitive?: boolean }): boolean {
 		return this.matchAgainst(pattern, options?.caseSensitive, false);
 	}
 
 	/**
-	 * Return the path as a URI.
+	 * Converts the path to a `file://` URI string.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.PurePath.as_uri.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.as_uri
+	 * @remarks
+	 *
+	 * The path must be absolute. The output is suitable for environments that consume RFC 8089 URIs.
+	 *
+	 * @returns RFC 8089 compliant file URI.
+	 * @throws {@link Error} If the path is relative.
 	 */
 	asURI(): string {
 		if (!this.isAbsolute()) {
@@ -634,10 +827,15 @@ export class PurePath {
 	}
 
 	/**
-	 * Return a new path from the given 'file' URI.
+	 * Creates a path from a `file://` URI string.
 	 *
-	 * Docstring copied from CPython 3.14 pathlib.Path.from_uri.
-	 * @see https://docs.python.org/3/library/pathlib.html#pathlib.Path.from_uri
+	 * @remarks
+	 *
+	 * Mirrors {@link Path.fromURI} but returns a pure path instance so no filesystem checks occur.
+	 *
+	 * @param uri - URI starting with `file:`.
+	 * @returns A new {@link PurePath} matching the URI.
+	 * @throws {@link TypeError} If `uri` cannot be converted into a file path.
 	 */
 	static fromURI(uri: string): PurePath {
 		const resolved = fileURLToPath(uri);
@@ -646,33 +844,35 @@ export class PurePath {
 }
 
 /**
- * PurePath subclass for non-Windows systems. On a POSIX system, instantiating a
- * PurePath should return this object. However, you can also instantiate it
- * directly on any system.
+ * Pure-path flavour that uses POSIX parsing rules.
  *
- * Docstring copied from CPython 3.14 pathlib.PurePosixPath.
- * @see https://docs.python.org/3/library/pathlib.html#pathlib.PurePosixPath
+ * @remarks
+ *
+ * Instantiated automatically on POSIX hosts, but can be constructed explicitly to manipulate POSIX paths on
+ * other systems. However, you can also instantiate it directly on any system.
  */
 export class PurePosixPath extends PurePath {
 	static override parser = posixParser;
 }
 
 /**
- * PurePath subclass for Windows systems. On a Windows system, instantiating a
- * PurePath should return this object. However, you can also instantiate it
- * directly on any system.
+ * Pure-path flavour that uses Windows drive and separator semantics.
  *
- * Docstring copied from CPython 3.14 pathlib.PureWindowsPath.
- * @see https://docs.python.org/3/library/pathlib.html#pathlib.PureWindowsPath
+ * @remarks
+ *
+ * Instantiated automatically on Windows hosts, but available everywhere for lexical Windows path work.
+ * However, you can also instantiate it directly on any system.
  */
 export class PureWindowsPath extends PurePath {
 	static override parser = windowsParser;
 }
 
 /**
- * An exception that is raised when an unsupported operation is attempted.
+ * Error thrown when the host runtime lacks a required filesystem capability.
  *
- * Docstring copied from CPython 3.14 pathlib.UnsupportedOperation.
- * @see https://docs.python.org/3/library/pathlib.html#pathlib.UnsupportedOperation
+ * @remarks
+ *
+ * This mirrors CPython's `pathlib.UnsupportedOperation` and is raised, for example, when `fs.glob` is
+ * missing.
  */
 export class UnsupportedOperation extends Error {}

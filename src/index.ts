@@ -1,25 +1,23 @@
 /**
- * Object-oriented filesystem paths.
+ * Object-oriented filesystem paths for TypeScript runtimes.
  *
- * This module provides classes to represent abstract paths and concrete
- * paths with operations that have semantics appropriate for different
- * operating systems.
+ * @remarks
  *
- * The primary classes are:
- * - PurePath: base class for manipulating paths without I/O.
- * - PurePosixPath / PureWindowsPath: platform-specific PurePath subclasses.
- * - Path: concrete subclass that performs system calls (stat, mkdir, etc.).
+ * Re-exports the core classes from CPython's `pathlib` module while adapting semantics to JavaScript. The
+ * primary entry points are:
  *
- * Parity note:
- * This TypeScript port follows CPython's `pathlib` design closely but
- * diverges where language and runtime differences require it:
- * - Async-first API: filesystem methods are asynchronous by default and
- *   expose sync counterparts suffixed with `Sync`.
- * - Runtime portability: some low-level OS features from CPython are
- *   intentionally omitted (see `src/os.ts`) to avoid native bindings.
- * - Globbing: CPython's internal glob implementation is preserved where
- *   possible; when a runtime provides `fs.globSync` it is used, otherwise
- *   behavior may differ.
+ * - {@link PurePath} for lexical operations without touching the filesystem.
+ * - {@link PurePosixPath} and {@link PureWindowsPath} for flavour-specific manipulation.
+ * - {@link Path} for concrete paths that invoke Node's filesystem APIs (with async-first variants).
+ *
+ * Differences compared to CPython:
+ *
+ * 1. Asynchronous by default: every filesystem method returns a `Promise`, with `Sync` suffixed counterparts
+ *    for synchronous access.
+ * 2. Portability-focused omissions: low-level syscalls that rely on native bindings are intentionally left
+ *    out. See `src/os.ts` for details and rationale.
+ * 3. Globbing: Node's `fs.glob`/`fs.globSync` is used when available; otherwise the behaviour is implemented
+ *    in userland.
  *
  * @see https://github.com/python/cpython/blob/3.14/Lib/pathlib/__init__.py
  */
