@@ -1,5 +1,6 @@
 import nodepath from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { Path } from "./path.js";
 
 /**
  * Indicates whether the current runtime reports Windows-style path semantics.
@@ -175,7 +176,17 @@ function globToRegExp(
 	return new RegExp(regex, caseSensitive ? "" : "i");
 }
 
-class PathParents implements Iterable<PurePath> {
+/**
+ * Sequence-like view over the logical ancestors of a {@link PurePath}.
+ *
+ * @remarks
+ *
+ * Iterating over this object yields each parent path in order, from immediate
+ * to the top-level anchor.
+ *
+ * @public
+ */
+export class PathParents implements Iterable<PurePath> {
 	private readonly listing: PurePath[];
 
 	constructor(origin: PurePath) {
@@ -212,6 +223,8 @@ class PathParents implements Iterable<PurePath> {
  * CPython accepts both `str` and path objects for most APIs. The TypeScript port mirrors this
  * behaviour by accepting plain strings alongside {@link PurePath} instances. Concrete
  * {@link Path} objects also satisfy the contract because they extend `PurePath`.
+ *
+ * @public
  */
 export type PathLike = string | PurePath;
 
@@ -251,6 +264,8 @@ export type PathLike = string | PurePath;
  * PurePath will return either a PurePosixPath or a PureWindowsPath object.
  * You can also instantiate either of these classes directly, regardless of
  * your system.
+ *
+ * @public
  */
 export class PurePath {
 	static parser: nodepath.PlatformPath = isWindows
@@ -514,8 +529,8 @@ export class PurePath {
 	 *
 	 * @remarks
 	 *
-	 * The returned object implements {@link Iterable}, enabling constructs like `for (const parent of
-	 * path.parents)`. This mirrors CPython behaviour and honours flavour-specific casing rules.
+	 * The returned object implements {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#The_iterable_protocol | Iterable},
+	 * enabling constructs like `for (const parent of path.parents)`. This mirrors CPython behaviour and honours flavour-specific casing rules.
 	 *
 	 * @returns A sequence-like view over ancestor paths.
 	 */
@@ -529,7 +544,7 @@ export class PurePath {
 	 * @remarks
 	 *
 	 * This mirrors CPython's `name` property and respects flavour casing. For directory entries surfaced via
-	 * {@link Path.iterdir}, prefer this over {@link fs.Dirent.name} when you need canonical path semantics.
+	 * {@link Path.(iterdir:1)}, prefer this over {@link https://nodejs.org/api/fs.html#direntname | fs.Dirent.name} when you need canonical path semantics.
 	 *
 	 * @returns Final segment of the path without drive or root information.
 	 */
@@ -606,7 +621,7 @@ export class PurePath {
 	 *
 	 * @param name - Replacement leaf component. Must not contain path separators.
 	 * @returns A new path with the same anchor and parent but a different final component.
-	 * @throws {@link Error} If the name is empty, `.` or contains separators.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class If the name is empty, `.` or contains separators.
 	 */
 	withName(name: string): PurePath {
 		const parser = (this.constructor as typeof PurePath).parser;
@@ -640,7 +655,7 @@ export class PurePath {
 	 *
 	 * @param suffix - New suffix starting with a dot, or an empty string to remove it.
 	 * @returns A new path with the updated suffix.
-	 * @throws {@link Error} If the suffix does not start with `.` or the path lacks a stem.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class If the suffix does not start with `.` or the path lacks a stem.
 	 */
 	withSuffix(suffix: string): PurePath {
 		if (suffix && !suffix.startsWith(".")) {
@@ -661,7 +676,7 @@ export class PurePath {
 	 *
 	 * @param stem - New stem string.
 	 * @returns A new path where the last component has the provided stem.
-	 * @throws {@link Error} If the path has a suffix and `stem` is empty.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class If the path has a suffix and `stem` is empty.
 	 */
 	withStem(stem: string): PurePath {
 		const currentSuffix = this.suffix;
@@ -683,7 +698,7 @@ export class PurePath {
 	 * @param other - Anchor path used as the reference point.
 	 * @param options - Optional lexical behaviour toggles (`walkUp` mirrors CPython 3.12+).
 	 * @returns A new path relative to `other`.
-	 * @throws {@link Error} When anchors differ or no lexical relationship exists (and `walkUp` is false).
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When anchors differ or no lexical relationship exists (and `walkUp` is false).
 	 */
 	relativeTo(other: PathLike, options?: { walkUp?: boolean }): PurePath {
 		const target = other instanceof PurePath ? other : this.withSegments(other);
@@ -817,7 +832,7 @@ export class PurePath {
 	 * The path must be absolute. The output is suitable for environments that consume RFC 8089 URIs.
 	 *
 	 * @returns RFC 8089 compliant file URI.
-	 * @throws {@link Error} If the path is relative.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class If the path is relative.
 	 */
 	asURI(): string {
 		if (!this.isAbsolute()) {
@@ -831,11 +846,13 @@ export class PurePath {
 	 *
 	 * @remarks
 	 *
-	 * Mirrors {@link Path.fromURI} but returns a pure path instance so no filesystem checks occur.
+	 * Returns a pure path instance with no filesystem checks occurring.
+	 * Delegates to {@link https://nodejs.org/api/url.html#urlfileurltopathurl-options | fileURLToPath} and thus throws on
+	 * invalid inputs.
 	 *
 	 * @param uri - URI starting with `file:`.
 	 * @returns A new {@link PurePath} matching the URI.
-	 * @throws {@link TypeError} If `uri` cannot be converted into a file path.
+	 * @throws The {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError | TypeError} If `uri` cannot be converted into a file path.
 	 */
 	static fromURI(uri: string): PurePath {
 		const resolved = fileURLToPath(uri);
@@ -850,6 +867,8 @@ export class PurePath {
  *
  * Instantiated automatically on POSIX hosts, but can be constructed explicitly to manipulate POSIX paths on
  * other systems. However, you can also instantiate it directly on any system.
+ *
+ * @public
  */
 export class PurePosixPath extends PurePath {
 	static override parser = posixParser;
@@ -862,6 +881,8 @@ export class PurePosixPath extends PurePath {
  *
  * Instantiated automatically on Windows hosts, but available everywhere for lexical Windows path work.
  * However, you can also instantiate it directly on any system.
+ *
+ * @public
  */
 export class PureWindowsPath extends PurePath {
 	static override parser = windowsParser;
@@ -874,5 +895,7 @@ export class PureWindowsPath extends PurePath {
  *
  * This mirrors CPython's `pathlib.UnsupportedOperation` and is raised, for example, when `fs.glob` is
  * missing.
+ *
+ * @public
  */
 export class UnsupportedOperation extends Error {}

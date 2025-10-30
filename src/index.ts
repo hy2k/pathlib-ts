@@ -22,17 +22,42 @@
  * @see https://github.com/python/cpython/blob/3.14/Lib/pathlib/__init__.py
  */
 
+import { DirEntryInfo, PathInfo } from "./os.js";
 import { DefaultPath, Path, PosixPath, WindowsPath } from "./path.js";
 import {
+	PathParents,
 	PurePath,
 	PurePosixPath,
 	PureWindowsPath,
 	UnsupportedOperation,
 } from "./purepath.js";
 
-export type { ResolutionPolicy } from "./path.js";
-export { DefaultPath, Path, PosixPath, WindowsPath } from "./path.js";
 export {
+	DirEntryInfo,
+	PathInfo,
+	PathInfoBase,
+} from "./os.js";
+export type {
+	ExtractPolicy,
+	PathIsRelativeToFn,
+	PathIsRelativeToOptions,
+	PathIsRelativeToReturn,
+	PathOptionsArg,
+	PathRelativeToFn,
+	PathRelativeToOptions,
+	PathRelativeToReturn,
+	ResolutionPolicy,
+	WalkTuple,
+} from "./path.js";
+export {
+	DefaultPath,
+	Path,
+	PosixPath,
+	WindowsPath,
+} from "./path.js";
+export type { PathLike } from "./purepath.js";
+export {
+	PathParents,
 	PurePath,
 	PurePosixPath,
 	PureWindowsPath,
@@ -48,4 +73,7 @@ export default {
 	PosixPath,
 	WindowsPath,
 	DefaultPath,
+	PathParents,
+	PathInfo,
+	DirEntryInfo,
 };
