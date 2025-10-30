@@ -1,4 +1,7 @@
-# Path & PurePath APIs
+---
+title: API Reference
+description: Summary of pathlib-ts classes, methods, and intentional deviations from CPython.
+---
 
 `pathlib-ts` mirrors CPython 3.14's `pathlib` module but adapts it to TypeScript, an async-first programming style, and the Node-compatible runtime surface. This page summarises the major classes and highlights the places where the port intentionally diverges.
 

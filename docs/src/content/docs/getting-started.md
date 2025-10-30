@@ -1,4 +1,7 @@
-# Getting Started
+---
+title: Getting Started
+description: Install pathlib-ts, understand runtime requirements, and explore the core classes.
+---
 
 This guide walks through installing `pathlib-ts`, understanding the runtime requirements, and exercising the core primitives (`Path` for I/O + `PurePath` for string-level manipulations).
 
@@ -83,5 +86,5 @@ You can mix `PurePath` and `Path` instances: combining them via `joinpath()` or 
 
 ## Next steps
 
-- Browse the [API reference](./api-reference.md) for a rundown of available methods.
-- Read the [usage patterns](./usage-patterns.md) for real-world recipes.
+- Browse the [API reference](./api-reference/) for a rundown of available methods.
+- Read the [usage patterns](./usage-patterns/) for real-world recipes.
