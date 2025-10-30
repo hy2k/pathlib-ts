@@ -12,8 +12,6 @@ import {
 	normalizeForParser,
 	type PathLike,
 	PurePath,
-	PurePosixPath,
-	PureWindowsPath,
 	posixParser,
 	UnsupportedOperation,
 	windowsParser,
@@ -28,6 +26,8 @@ import { toPromise } from "./util.js";
  * The first element is the directory being visited, followed by shallow copies of the names reported in
  * that directory. Mutating the `dirnames` array during a top-down walk prevents traversal into the removed
  * entries, aligning with CPython's documented behaviour.
+ *
+ * @public
  */
 export type WalkTuple = [Path, string[], string[]];
 
@@ -44,10 +44,15 @@ export type WalkTuple = [Path, string[], string[]];
  * - `"parent"`: anchor relative operations to `other.parent` without touching the filesystem.
  * - `"auto"`: probe the filesystem to decide whether `other` should be treated as a directory. This may
  *   require I/O and therefore produces a `Promise`.
+ *
+ * @public
  */
 export type ResolutionPolicy = "auto" | "parent" | "exact";
 
-type PathRelativeToOptions = {
+/**
+ * @public
+ */
+export type PathRelativeToOptions = {
 	walkUp?: boolean;
 	extra?: {
 		policy?: ResolutionPolicy;
@@ -55,7 +60,10 @@ type PathRelativeToOptions = {
 	};
 };
 
-type PathIsRelativeToOptions = {
+/**
+ * @public
+ */
+export type PathIsRelativeToOptions = {
 	extra?: {
 		policy?: ResolutionPolicy;
 		followSymlinks?: boolean;
@@ -63,39 +71,53 @@ type PathIsRelativeToOptions = {
 	};
 };
 
-type PathOptionsArg<T> = T | undefined;
+/**
+ * @public
+ */
+export type PathOptionsArg<T> = T | undefined;
 
-type ExtractPolicy<T> = T extends { extra: { policy: infer P } }
+/**
+ * @public
+ */
+export type ExtractPolicy<T> = T extends { extra: { policy: infer P } }
 	? P
 	: T extends { extra?: { policy?: infer P } }
 		? P
 		: undefined;
 
-type PathRelativeToReturn<
+/**
+ * @public
+ */
+export type PathRelativeToReturn<
 	Options extends PathOptionsArg<PathRelativeToOptions>,
 > = ExtractPolicy<Options> extends "auto" ? Promise<PurePath> : PurePath;
 
-type PathIsRelativeToReturn<
+/**
+ * @public
+ */
+export type PathIsRelativeToReturn<
 	Options extends PathOptionsArg<PathIsRelativeToOptions>,
 > = ExtractPolicy<Options> extends "auto" ? Promise<boolean> : boolean;
 
-type PathRelativeToFn = <
+/**
+ * @public
+ */
+export type PathRelativeToFn = <
 	Options extends PathOptionsArg<PathRelativeToOptions> = undefined,
 >(
 	other: PathLike,
 	options?: Options,
 ) => PathRelativeToReturn<Options>;
 
-type PathIsRelativeToFn = <
+/**
+ * @public
+ */
+export type PathIsRelativeToFn = <
 	Options extends PathOptionsArg<PathIsRelativeToOptions> = undefined,
 >(
 	other: PathLike,
 	options?: Options,
 ) => PathIsRelativeToReturn<Options>;
-
-function selectPurePathCtor(): typeof PurePath {
-	return isWindows ? PureWindowsPath : PurePosixPath;
-}
 
 /**
  * Concrete path that layers filesystem I/O on top of {@link PurePath} semantics.
@@ -132,8 +154,10 @@ function selectPurePathCtor(): typeof PurePath {
  * PosixPath or a WindowsPath object. You can also instantiate a PosixPath or
  * WindowsPath directly, but cannot instantiate a WindowsPath on a POSIX system
  * or vice versa.
+ *
+ * @public
  */
-export class Path extends (selectPurePathCtor() as typeof PurePath) {
+export class Path extends PurePath {
 	// Path.infoCache may store a PathInfo or a DirEntryInfo created by
 	// readdir with file-type information. Widen the type to avoid unsafe casts.
 	protected infoCache?: PathInfo | DirEntryInfo;
@@ -181,7 +205,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * @param other - The anchor path to compare against.
 	 * @param options - Behavioural toggles controlling lexical vs filesystem-based policies.
 	 * @returns A {@link PurePath} or `Promise<PurePath>` depending on the selected policy.
-	 * @throws {@link Error} When the paths are unrelated and `walkUp` is not permitted.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the paths are unrelated and `walkUp` is not permitted.
 	 */
 	override relativeTo: PathRelativeToFn = ((
 		other: PathLike,
@@ -294,7 +318,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * @remarks
 	 *
-	 * When the path originates from {@link Path.iterdir} with `withFileTypes: true`, this accessor exposes the
+	 * When the path originates from {@link Path.(iterdir:1)} with `withFileTypes: true`, this accessor exposes the
 	 * cached {@link DirEntryInfo}. Calling {@link Path.isDir} or {@link Path.stat} refreshes data when necessary.
 	 *
 	 * @returns A cached {@link PathInfo} or {@link DirEntryInfo} object.
@@ -319,7 +343,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Synchronous variant of {@link Path.stat}.
 	 *
 	 * @param options - Optional follow-symlink toggle.
-	 * @returns Node.js {@link Stats} describing the path.
+	 * @returns Node.js {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} describing the path.
 	 */
 	statSync(options?: { followSymlinks?: boolean }): Stats {
 		const follow = options?.followSymlinks ?? true;
@@ -340,7 +364,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Resolves through the runtime's promise helper so it matches the async-first design.
 	 *
 	 * @param options - Optional follow-symlink toggle.
-	 * @returns A promise that resolves with {@link Stats} information.
+	 * @returns A promise that resolves with {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} information.
 	 */
 	stat(options?: { followSymlinks?: boolean }): Promise<Stats> {
 		return toPromise(() => this.statSync(options));
@@ -357,7 +381,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * Synchronous variant of {@link Path.lstat}.
 	 *
-	 * @returns {@link Stats} describing the link entry.
+	 * @returns The {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} class describing the link entry.
 	 */
 	lstatSync(): Stats {
 		return fs.lstatSync(this.toString());
@@ -372,7 +396,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * Mirrors CPython's `Path.lstat()` and Node's `fs.lstat` behaviour.
 	 *
-	 * @returns A promise resolving to {@link Stats} for the link itself.
+	 * @returns A promise resolving to {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} for the link itself.
 	 */
 	lstat(): Promise<Stats> {
 		return toPromise(() => this.lstatSync());
@@ -534,14 +558,14 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * @remarks
 	 *
-	 * Set `extra.withFileTypes` to receive native {@link Dirent} objects;
+	 * Set `extra.withFileTypes` to receive native {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent} objects;
 	 * otherwise {@link Path} instances are returned, mirroring CPython.
 	 *
-	 * @remarks Synchronous variant of {@link Path.iterdir}.
+	 * @remarks Synchronous variant of {@link Path.(iterdir:1)}.
 	 *
 	 * @param options - Optional flags controlling the return type.
-	 * @returns Directory entries as {@link Path} objects or {@link Dirent}s.
-	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
+	 * @returns Directory entries as {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
+	 * @throws The {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
 	 */
 	iterdirSync(options?: { extra?: { withFileTypes?: false } }): Path[];
 	iterdirSync(options: { extra?: { withFileTypes: true } }): Dirent[];
@@ -568,16 +592,16 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	}
 
 	/**
-	 * Resolves directory entries asynchronously as {@link Path} instances or native {@link Dirent}s.
+	 * Resolves directory entries asynchronously as {@link Path} instances or native {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
 	 *
 	 * @remarks
 	 *
-	 * Pass `extra.withFileTypes: true` to receive {@link Dirent} objects. Throws
+	 * Pass `extra.withFileTypes: true` to receive {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent} objects. Throws
 	 * {@link UnsupportedOperation} when the runtime does not support `withFileTypes`.
 	 *
 	 * @param options - Optional flags controlling the return type.
-	 * @returns Promise resolving to directory entries as {@link Path} objects or {@link Dirent}s.
-	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
+	 * @returns Promise resolving to directory entries as {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
+	 * @throws The {@link UnsupportedOperation} When requesting `withFileTypes` on a runtime without support.
 	 */
 	iterdir(options?: { extra?: { withFileTypes?: false } }): Promise<Path[]>;
 	iterdir(options: { extra?: { withFileTypes: true } }): Promise<Dirent[]>;
@@ -631,17 +655,17 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * @remarks
 	 *
-	 * Shares the same `extra.withFileTypes` behaviour as {@link Path.iterdir}. Uses `fs.opendir` when
+	 * Shares the same `extra.withFileTypes` behaviour as {@link Path.(iterdir:1)}. Uses `fs.opendir` when
 	 * available to avoid materialising the whole directory; otherwise falls back to buffered reads.
 	 * Throws {@link UnsupportedOperation} when `withFileTypes` is requested but not supported.
 	 *
 	 * @privateRemarks
 	 *
-	 * Async generator variant of {@link Path.iterdir}.
+	 * Async generator variant of {@link Path.(iterdir:1)}.
 	 *
 	 * @param options - Optional flags controlling the yielded value type.
-	 * @returns An async iterable yielding {@link Path} objects or {@link Dirent}s.
-	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
+	 * @returns An async iterable yielding {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
+	 * @throws The {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
 	 */
 	iterdirStream(options?: {
 		extra?: { withFileTypes?: false };
@@ -749,8 +773,8 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * when available and falls back to `fs.readdirSync` otherwise.
 	 *
 	 * @param options - Optional flags controlling the yielded value type.
-	 * @returns An iterable emitting {@link Path} objects or {@link Dirent}s.
-	 * @throws {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
+	 * @returns An iterable emitting {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
+	 * @throws The {@link UnsupportedOperation} When requesting `withFileTypes` without runtime support.
 	 */
 	iterdirStreamSync(options?: {
 		extra?: { withFileTypes?: false };
@@ -884,7 +908,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * @param pattern - Glob pattern interpreted relative to this path.
 	 * @param options - Options forwarded to Node's `fs.globSync`.
 	 * @returns Matching paths as {@link Path} objects.
-	 * @throws {@link UnsupportedOperation} If `fs.globSync` is unavailable.
+	 * @throws The {@link UnsupportedOperation} If `fs.globSync` is unavailable.
 	 */
 	globSync(pattern: string, options?: fs.GlobOptions): Path[] {
 		return this.globSyncInternal(pattern, options);
@@ -903,7 +927,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * @param pattern - Glob pattern interpreted relative to this path.
 	 * @param options - Options forwarded to Node's `fs.glob` implementation.
 	 * @returns Promise resolving to matching {@link Path} objects.
-	 * @throws {@link UnsupportedOperation} If globbing is not supported.
+	 * @throws The {@link UnsupportedOperation} If globbing is not supported.
 	 */
 	glob(pattern: string, options?: fs.GlobOptions): Promise<Path[]> {
 		return toPromise(() => this.globSyncInternal(pattern, options));
@@ -946,7 +970,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * @param pattern - Glob pattern to evaluate recursively.
 	 * @param options - Options forwarded to Node's glob implementation.
 	 * @returns Promise resolving to matching {@link Path} objects.
-	 * @throws {@link UnsupportedOperation} If globbing is not supported by the runtime.
+	 * @throws The {@link UnsupportedOperation} If globbing is not supported by the runtime.
 	 */
 	rglob(pattern: string, options?: fs.GlobOptions): Promise<Path[]> {
 		return toPromise(() => this.rglobSync(pattern, options));
@@ -984,7 +1008,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * Mirrors {@link Path.readBytes} but executes synchronously.
 	 *
-	 * @returns File contents as a {@link Buffer}.
+	 * @returns File contents as a {@link https://nodejs.org/api/buffer.html#class-buffer | Buffer}.
 	 */
 	readBytesSync(): Buffer {
 		return fs.readFileSync(this.toString());
@@ -1064,7 +1088,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Mirrors {@link Path.open} but executes synchronously.
 	 *
 	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
-	 * @returns A Node {@link fs.ReadStream} configured for the provided mode.
+	 * @returns A Node {@link https://nodejs.org/api/fs.html#class-fsreadstream | fs.ReadStream} configured for the provided mode.
 	 */
 	openSync(mode = "r"): fs.ReadStream {
 		return magicOpen(this.toString(), { mode });
@@ -1075,11 +1099,11 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * @remarks
 	 *
-	 * Delegates to {@link magicOpen} to match CPython defaults while
-	 * still returning a Node.js compatible stream proxy.
+	 * Delegates to `magicOpen` utility to match CPython defaults while still
+	 * returning a Node.js compatible stream proxy.
 	 *
 	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
-	 * @returns Promise resolving to a {@link fs.ReadStream}.
+	 * @returns Promise resolving to a {@link https://nodejs.org/api/fs.html#class-fsreadstream | fs.ReadStream}.
 	 */
 	open(mode = "r"): Promise<fs.ReadStream> {
 		return toPromise(() => this.openSync(mode));
@@ -1444,7 +1468,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Mirrors {@link Path.expandUser} but executes synchronously.
 	 *
 	 * @returns A {@link Path} with user-home prefixes expanded.
-	 * @throws {@link Error} When the home directory cannot be determined.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
 	 */
 	expandUserSync(): Path {
 		const tail = this.tailParts();
@@ -1468,7 +1492,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * semantics.
 	 *
 	 * @returns Promise resolving to a {@link Path} with user-home prefixes expanded.
-	 * @throws {@link Error} When the home directory cannot be determined.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
 	 */
 	expandUser(): Promise<Path> {
 		return toPromise(() => this.expandUserSync());
@@ -1510,7 +1534,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * @remarks Mirrors {@link Path.home} but executes synchronously.
 	 *
 	 * @returns A {@link Path} instance targeting the user's home directory.
-	 * @throws {@link Error} When the home directory cannot be determined.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
 	 */
 	static homeSync(): Path {
 		const home = nodeos.homedir();
@@ -1526,7 +1550,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 * Leverages Node's home directory detection to match CPython.
 	 *
 	 * @returns Promise resolving to a {@link Path} instance targeting the user's home directory.
-	 * @throws {@link Error} When the home directory cannot be determined.
+	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
 	 */
 	static home(): Promise<Path> {
 		return toPromise(() => Path.homeSync());
@@ -1565,8 +1589,7 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
 	 *
 	 * @remarks
 	 *
-	 * Returns {@link WalkTuple} entries while delegating to the
-	 * synchronous walker via {@link toPromise}.
+	 * Returns {@link WalkTuple} entries while delegating to the synchronous walker via Promise wrapper.
 	 *
 	 * @param options - Control for traversal order (`topDown`).
 	 * @returns Promise resolving to an array of {@link WalkTuple} entries.
@@ -1583,6 +1606,8 @@ export class Path extends (selectPurePathCtor() as typeof PurePath) {
  * platform. Instantiate directly to manipulate POSIX paths on any host.
  *
  * @see https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath
+ *
+ * @public
  */
 export class PosixPath extends Path {
 	static override parser = posixParser;
@@ -1595,6 +1620,8 @@ export class PosixPath extends Path {
  * platform. Instantiate directly to manipulate Windows paths on any host.
  *
  * @see https://docs.python.org/3/library/pathlib.html#pathlib.WindowsPath
+ *
+ * @public
  */
 export class WindowsPath extends Path {
 	static override parser = windowsParser;
@@ -1602,5 +1629,7 @@ export class WindowsPath extends Path {
 
 /**
  * Alias for the platform-appropriate concrete path class ({@link WindowsPath} on Windows, otherwise {@link PosixPath}).
+ *
+ * @public
  */
 export const DefaultPath = isWindows ? WindowsPath : PosixPath;

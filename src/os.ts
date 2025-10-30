@@ -34,6 +34,7 @@
 import fs from "node:fs";
 import nodepath from "node:path";
 import { ErrnoError } from "./errors.js";
+import { Path } from "./path.js";
 import { toPromise } from "./util.js";
 
 export { ErrnoError } from "./errors.js";
@@ -50,7 +51,7 @@ export { ErrnoError } from "./errors.js";
  * @param source - Path or readable stream supplying data.
  * @param target - Path or writable stream receiving data.
  * @returns Promise that resolves when copying completes.
- * @throws {@link ErrnoError} When the provided handles cannot be copied synchronously.
+ * @throws The {@link ErrnoError} When the provided handles cannot be copied synchronously.
  */
 export async function copyFileObj(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -70,7 +71,7 @@ export async function copyFileObj(
  *
  * @param source - Path or readable stream supplying data.
  * @param target - Path or writable stream receiving data.
- * @throws {@link ErrnoError} When copying cannot be performed synchronously.
+ * @throws The {@link ErrnoError} When copying cannot be performed synchronously.
  */
 export function copyFileObjSync(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -127,7 +128,7 @@ export function copyFileObjSync(
  * @param pathStr - Absolute or relative file path.
  * @param options - Mode, encoding, and buffering preferences.
  * @returns A readable stream configured per the provided mode.
- * @throws {@link TypeError} When binary mode is combined with an encoding.
+ * @throws The {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError | TypeError} When binary mode is combined with an encoding.
  */
 export function magicOpen(
 	pathStr: string,
@@ -163,7 +164,7 @@ export function magicOpen(
  *
  * @param source - Candidate source path.
  * @param target - Candidate destination path.
- * @throws {@link ErrnoError} When the paths are identical or one is nested under the other.
+ * @throws The {@link ErrnoError} When the paths are identical or one is nested under the other.
  */
 export function ensureDistinctPaths(source: string, target: string): void {
 	const s = nodepath.resolve(source);
@@ -193,7 +194,7 @@ export function ensureDistinctPaths(source: string, target: string): void {
  * @param source - Source path-like object or descriptor.
  * @param target - Target path-like object or descriptor.
  * @returns Promise that resolves when the paths are distinct.
- * @throws {@link ErrnoError} When the two inputs resolve to the same file.
+ * @throws The {@link ErrnoError} When the two inputs resolve to the same file.
  */
 export async function ensureDifferentFiles(
 	source: unknown,
@@ -213,7 +214,7 @@ export async function ensureDifferentFiles(
  *
  * @param source - Source path-like object or descriptor.
  * @param target - Target path-like object or descriptor.
- * @throws {@link ErrnoError} When the two inputs resolve to the same file.
+ * @throws The {@link ErrnoError} When the two inputs resolve to the same file.
  */
 export function ensureDifferentFilesSync(
 	source: unknown,
@@ -347,7 +348,18 @@ export function copyInfoSync(
 	}
 }
 
-class PathInfoBase {
+/**
+ * Cached stat provider
+ *
+ * @remarks
+ *
+ * Instances wrap a filesystem path string and lazily cache `fs.statSync` / `fs.lstatSync` results. Methods
+ * such as {@link PathInfoBase.exists} resolve once and reuse their cached value to avoid duplicate system calls
+ * when {@link Path.info} is reused across operations.
+ *
+ * @public
+ */
+export class PathInfoBase {
 	protected pathStr: string;
 	private statResult?: fs.Stats | null;
 	private lstatResult?: fs.Stats | null;
@@ -446,19 +458,23 @@ class PathInfoBase {
  * @remarks
  *
  * Instances wrap a filesystem path string and lazily cache `fs.statSync` / `fs.lstatSync` results. Methods
- * such as {@link PathInfo.exists} resolve once and reuse their cached value to avoid duplicate system calls
- * when `Path.info` is reused across operations.
+ * such as {@link PathInfoBase.exists} resolve once and reuse their cached value to avoid duplicate system calls
+ * when {@link Path.info} is reused across operations.
+ *
+ * @public
  */
 export class PathInfo extends PathInfoBase {}
 
 /**
- * `PathInfo` implementation that wraps a Node {@link fs.Dirent}.
+ * `PathInfo` implementation that wraps a Node {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}.
  *
  * @remarks
  *
  * Populated when directory entries are generated via `fs.readdir({ withFileTypes: true })`. The class stores
  * the original dirent and optionally the parent path, exposing cached stat information where possible to
  * reduce redundant filesystem calls during iteration.
+ *
+ * @public
  */
 export class DirEntryInfo extends PathInfoBase {
 	private _entry: (fs.Dirent & { path?: string }) | null;
