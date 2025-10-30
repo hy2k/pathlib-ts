@@ -1,4 +1,7 @@
-# Usage Patterns
+---
+title: Usage Patterns
+description: Recipes and migration tips for adopting pathlib-ts in real projects.
+---
 
 These recipes demonstrate idiomatic `pathlib-ts` usage drawn from the library's internal tests and real-world migrations.
 

@@ -1,4 +1,7 @@
-# Caveats & Gotchas
+---
+title: Caveats & Gotchas
+description: Behavioural differences, feature detection, and migration pitfalls to watch for.
+---
 
 A few behaviours in `pathlib-ts` are intentionally different from both CPython and Node's builtins. Understanding them upfront saves debugging time.
 

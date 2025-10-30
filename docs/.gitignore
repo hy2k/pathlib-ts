@@ -1,0 +1,6 @@
+.astro/
+dist/
+node_modules/
+**/reference/api/**
+temp/
+tsdoc-metadata.json

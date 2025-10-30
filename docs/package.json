@@ -1,0 +1,15 @@
+{
+	"name": "docs",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Documentation site for pathlib-ts",
+	"devDependencies": {
+		"@astrojs/starlight": "latest",
+		"astro": "latest",
+		"typescript": "^5.6.3"
+	},
+	"scripts": {
+		"build": "bun --bun astro build",
+		"dev": "bun --bun astro dev"
+	}
+}
