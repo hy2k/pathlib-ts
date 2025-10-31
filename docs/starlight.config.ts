@@ -19,9 +19,16 @@ const starlightConfig: StarlightUserConfig = {
 		{
 			label: "Reference",
 			items: [
-				{ label: "API", link: "/reference/api/pathlib-ts/" },
+				{ label: "API Overview", link: "/reference/api/pathlib-ts/" },
 				{ label: "Path", link: "/reference/api/path/" },
+				{ label: "PathInfo", link: "/reference/api/pathinfo/" },
+				{ label: "DirEntryInfo", link: "/reference/api/direntryinfo/" },
+				{ label: "PosixPath", link: "/reference/api/posixpath/" },
+				{ label: "WindowsPath", link: "/reference/api/windowspath/" },
 				{ label: "PurePath", link: "/reference/api/purepath/" },
+				{ label: "PathParents", link: "/reference/api/pathparents/" },
+				{ label: "PurePosixPath", link: "/reference/api/pureposixpath/" },
+				{ label: "PureWindowsPath", link: "/reference/api/purewindowspath/" },
 			],
 		},
 	],
