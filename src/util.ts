@@ -8,6 +8,15 @@
  *
  * @param factory - Synchronous function producing a value.
  * @returns A promise that resolves with the factory result or rejects with the thrown error.
+ *
+ * @example Wrapping a synchronous stat call
+ * ```ts
+ * import { toPromise } from "pathlib-ts/dist/util.js";
+ * import fs from "node:fs";
+ *
+ * const size = await toPromise(() => fs.statSync("./package.json").size);
+ * console.log(size);
+ * ```
  */
 export function toPromise<T>(factory: () => T): Promise<T> {
 	try {

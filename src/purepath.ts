@@ -11,6 +11,15 @@ import type { Path } from "./path.js";
  * platform-specific logic such as case folding or default slash direction. The value is
  * computed once at module evaluation time and cached for subsequent imports.
  *
+ * @example Guarding Windows-only normalization
+ * ```ts
+ * import { isWindows, PurePath } from "pathlib-ts";
+ *
+ * const assets = new PurePath("assets", "styles.css");
+ * const rendered = isWindows ? assets.asPosix() : assets.toString();
+ * console.log(rendered);
+ * ```
+ *
  * @see https://docs.python.org/3/library/pathlib.html#module-pathlib
  */
 export const isWindows = nodepath.sep === "\\";
@@ -23,6 +32,15 @@ export const isWindows = nodepath.sep === "\\";
  * Exposed for advanced scenarios that need to parse strings using the same low-level
  * implementation as {@link PurePosixPath}. Use {@link PurePath.parser} instead when you
  * merely need to inspect the active parser for a path instance.
+ *
+ * @example Normalising POSIX separators manually
+ * ```ts
+ * import { posixParser } from "pathlib-ts";
+ *
+ * const raw = "./app//templates";
+ * const parts = posixParser.normalize(raw);
+ * console.log(parts); // 'app/templates'
+ * ```
  */
 export const posixParser = nodepath.posix;
 
@@ -33,6 +51,14 @@ export const posixParser = nodepath.posix;
  *
  * This exposes the native join, normalize, and split rules that back {@link PureWindowsPath}.
  * It is primarily useful for integrations that must interoperate with `PurePath` internals.
+ *
+ * @example Converting mixed separators for Windows paths
+ * ```ts
+ * import { windowsParser } from "pathlib-ts";
+ *
+ * const mixed = "C:/data\\export";
+ * console.log(windowsParser.normalize(mixed)); // 'C:\\data\\export'
+ * ```
  */
 export const windowsParser = nodepath.win32;
 
@@ -53,6 +79,15 @@ function escapeRegExp(value: string): string {
  * @param parser - The platform-aware parser associated with the target path flavour.
  * @param value - The raw path string supplied by the caller.
  * @returns A normalized string that can be safely parsed or joined via `node:path` helpers.
+ *
+ * @example Ensuring Windows-safe separators
+ * ```ts
+ * import { normalizeForParser, windowsParser } from "pathlib-ts";
+ *
+ * const raw = "..\\assets/style.css";
+ * const safe = normalizeForParser(windowsParser, raw);
+ * console.log(safe); // '../assets/style.css' with Windows separators
+ * ```
  */
 export function normalizeForParser(
 	parser: nodepath.PlatformPath,
@@ -184,6 +219,21 @@ function globToRegExp(
  * Iterating over this object yields each parent path in order, from immediate
  * to the top-level anchor.
  *
+ * @example Iterating over parent directories
+ * ```ts
+ * import { PathParents, PurePath } from "pathlib-ts";
+ *
+ * const article = new PurePath("/site/content/posts/launch.mdx");
+ * const parents = new PathParents(article);
+ *
+ * for (const parent of parents) {
+ *   console.log(parent.toString());
+ * }
+ * // '/site/content/posts'
+ * // '/site/content'
+ * // '/site'
+ * ```
+ *
  * @public
  */
 export class PathParents implements Iterable<PurePath> {
@@ -223,6 +273,18 @@ export class PathParents implements Iterable<PurePath> {
  * CPython accepts both `str` and path objects for most APIs. The TypeScript port mirrors this
  * behaviour by accepting plain strings alongside {@link PurePath} instances. Concrete
  * {@link Path} objects also satisfy the contract because they extend `PurePath`.
+ *
+ * @example Accepting both strings and paths
+ * ```ts
+ * import { Path, PathLike } from "pathlib-ts";
+ *
+ * function ensurePath(value: PathLike): Path {
+ *   return value instanceof Path ? value : new Path(value);
+ * }
+ *
+ * const input = ensurePath("./tmp/output");
+ * console.log(input.toString());
+ * ```
  *
  * @public
  */
@@ -354,6 +416,23 @@ export class PurePath {
 	 * @param segments - Additional path fragments to combine. Absolute or anchored segments replace the
 	 * accumulated path, mirroring CPython semantics.
 	 * @returns A new path instance of the same concrete type.
+	 *
+	 * @example Creating a child path while preserving subclass state
+	 * ```ts
+	 * import { PurePath } from "pathlib-ts";
+	 *
+	 * class TaggedPath extends PurePath {
+	 *   constructor(tag: string, ...segments: Array<string>) {
+	 *     super(...segments);
+	 *     this.tag = tag;
+	 *   }
+	 *   tag: string;
+	 * }
+	 *
+	 * const root = new TaggedPath("build", "./dist");
+	 * const asset = root.withSegments(root, "scripts", "main.js");
+	 * console.log(asset.toString()); // 'dist/scripts/main.js'
+	 * ```
 	 */
 	withSegments<T extends PurePath>(this: T, ...segments: Array<PathLike>): T {
 		const ctor = this.constructor as new (...args: Array<PathLike>) => T;
@@ -371,6 +450,15 @@ export class PurePath {
 	 * @param drop - Number of segments to discard from the right-hand side. Values greater than the path
 	 * length clamp to zero.
 	 * @returns A new path of the same type with the requested segments removed.
+	 *
+	 * @example Trimming nested directories
+	 * ```ts
+	 * import { PurePath } from "pathlib-ts";
+	 *
+	 * const nested = new PurePath("/srv/app/templates/email/welcome.html");
+	 * const section = nested.dropSegments(2);
+	 * console.log(section.toString()); // '/srv/app/templates'
+	 * ```
 	 */
 	dropSegments<T extends PurePath>(this: T, drop: number): T {
 		const { drive, root } = this.anchorParts();
@@ -393,6 +481,15 @@ export class PurePath {
 	 *
 	 * @param segments - Path fragments to append in order.
 	 * @returns A new path instance with the appended segments.
+	 *
+	 * @example Building a nested resource path
+	 * ```ts
+	 * import { PurePath } from "pathlib-ts";
+	 *
+	 * const project = new PurePath("/workspace");
+	 * const config = project.joinpath("packages", "docs", "astro.config.mjs");
+	 * console.log(config.toString());
+	 * ```
 	 */
 	joinpath<T extends PurePath>(this: T, ...segments: Array<PathLike>): T {
 		return this.withSegments(this, ...segments);

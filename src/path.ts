@@ -338,6 +338,15 @@ export class Path extends PurePath {
 	 * Pass `followSymlinks: false` to mirror `lstat`. Mirrors Node's `fs.statSync`/`fs.lstatSync` while
 	 * preserving CPython semantics.
 	 *
+	 * @example Inspecting file size synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const log = new Path("./logs/app.log");
+	 * const stats = log.statSync();
+	 * console.log(stats.size);
+	 * ```
+	 *
 	 * @privateRemarks
 	 *
 	 * Synchronous variant of {@link Path.stat}.
@@ -358,6 +367,15 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Accepts `followSymlinks` to align with CPython behaviour.
+	 *
+	 * @example Asserting a directory exists before reading
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const dataDir = new Path("./data");
+	 * const stats = await dataDir.stat();
+	 * console.log(stats.isDirectory());
+	 * ```
 	 *
 	 * @privateRemarks
 	 *
@@ -381,6 +399,15 @@ export class Path extends PurePath {
 	 *
 	 * Synchronous variant of {@link Path.lstat}.
 	 *
+	 * @example Reading metadata for a symbolic link
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const link = new Path("./node_modules/.bin/tsc");
+	 * const info = link.lstatSync();
+	 * console.log(info.isSymbolicLink());
+	 * ```
+	 *
 	 * @returns The {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} class describing the link entry.
 	 */
 	lstatSync(): Stats {
@@ -396,6 +423,15 @@ export class Path extends PurePath {
 	 *
 	 * Mirrors CPython's `Path.lstat()` and Node's `fs.lstat` behaviour.
 	 *
+	 * @example Checking whether a dependency stub exists
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const link = new Path("./node_modules/.bin/eslint");
+	 * const stat = await link.lstat();
+	 * console.log(stat.isSymbolicLink());
+	 * ```
+	 *
 	 * @returns A promise resolving to {@link https://nodejs.org/api/fs.html#class-fsstats | fs.Stats} for the link itself.
 	 */
 	lstat(): Promise<Stats> {
@@ -408,6 +444,16 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Supports `followSymlinks: false` to test dangling links, matching CPython's API.
+	 *
+	 * @example Guarding a cache file synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cache = new Path("./.cache/state.json");
+	 * if (cache.existsSync()) {
+	 *   console.log("warm cache detected");
+	 * }
+	 * ```
 	 *
 	 * @privateRemarks
 	 *
@@ -435,6 +481,16 @@ export class Path extends PurePath {
 	 *
 	 * Follows symlinks by default; pass `followSymlinks: false` to check whether symlink exists.
 	 *
+	 * @example Skipping optional config during startup
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const localConfig = new Path("./config.local.json");
+	 * if (await localConfig.exists()) {
+	 *   console.log("loading overrides");
+	 * }
+	 * ```
+	 *
 	 * @param options - Optional follow-symlink toggle.
 	 * @returns A promise resolving to a boolean indicating existence.
 	 */
@@ -448,6 +504,14 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Returns `false` for missing paths and surfaces symlink handling via `followSymlinks`.
+	 *
+	 * @example Distinguishing directories synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const logs = new Path("./logs");
+	 * console.log(logs.isDirSync());
+	 * ```
 	 *
 	 * @privateRemarks
 	 *
@@ -475,6 +539,18 @@ export class Path extends PurePath {
 	 *
 	 * Promise wrapper around {@link Path.isDirSync}; match CPython semantics with `followSymlinks`.
 	 *
+	 * @example Filtering directory entries asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const root = new Path("./src");
+	 * for (const entry of await root.iterdir()) {
+	 *   if (await entry.isDir()) {
+	 *     console.log(entry.name);
+	 *   }
+	 * }
+	 * ```
+	 *
 	 * @param options - Optional follow-symlink toggle.
 	 * @returns Promise resolving to `true` when the path is a directory.
 	 */
@@ -488,6 +564,14 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Control symlink resolution with `followSymlinks`, mirroring CPython.
+	 *
+	 * @example Detecting generated bundles synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const bundle = new Path("./dist/index.html");
+	 * console.log(bundle.isFileSync());
+	 * ```
 	 *
 	 * @privateRemarks
 	 *
@@ -516,6 +600,18 @@ export class Path extends PurePath {
 	 *
 	 * Follows symlinks by default; pass `followSymlinks: false` to interrogate the link itself.
 	 *
+	 * @example Skipping non-files during ingestion
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const uploads = new Path("./uploads");
+	 * for (const entry of await uploads.iterdir()) {
+	 *   if (await entry.isFile()) {
+	 *     console.log("processing", entry.name);
+	 *   }
+	 * }
+	 * ```
+	 *
 	 * @param options - Optional follow-symlink toggle.
 	 * @returns Promise resolving to `true` when the path is a regular file.
 	 */
@@ -529,6 +625,14 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Wraps `fs.lstatSync` to mirror CPython semantics.
+	 *
+	 * @example Verifying a toolchain shim
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const shim = new Path("./node_modules/.bin/bun");
+	 * console.log(shim.isSymlinkSync());
+	 * ```
 	 *
 	 * @privateRemarks Synchronous variant of {@link Path.isSymlink}.
 	 *
@@ -547,6 +651,18 @@ export class Path extends PurePath {
 	 *
 	 * @remarks Promise wrapper around {@link Path.isSymlinkSync}.
 	 *
+	 * @example Checking links while traversing a tree
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const bin = new Path("./node_modules/.bin");
+	 * for (const entry of await bin.iterdir()) {
+	 *   if (await entry.isSymlink()) {
+	 *     console.log("link:", entry.name);
+	 *   }
+	 * }
+	 * ```
+	 *
 	 * @returns Promise resolving to `true` when the entry is a symbolic link.
 	 */
 	isSymlink(): Promise<boolean> {
@@ -562,6 +678,16 @@ export class Path extends PurePath {
 	 * otherwise {@link Path} instances are returned, mirroring CPython.
 	 *
 	 * @remarks Synchronous variant of {@link Path.(iterdir:1)}.
+	 *
+	 * @example Listing child paths synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const root = new Path("./templates");
+	 * for (const entry of root.iterdirSync()) {
+	 *   console.log(entry.name);
+	 * }
+	 * ```
 	 *
 	 * @param options - Optional flags controlling the return type.
 	 * @returns Directory entries as {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
@@ -598,6 +724,15 @@ export class Path extends PurePath {
 	 *
 	 * Pass `extra.withFileTypes: true` to receive {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent} objects. Throws
 	 * {@link UnsupportedOperation} when the runtime does not support `withFileTypes`.
+	 *
+	 * @example Loading directories asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const src = new Path("./src");
+	 * const entries = await src.iterdir();
+	 * console.log(entries.map((entry) => entry.name));
+	 * ```
 	 *
 	 * @param options - Optional flags controlling the return type.
 	 * @returns Promise resolving to directory entries as {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
@@ -658,6 +793,18 @@ export class Path extends PurePath {
 	 * Shares the same `extra.withFileTypes` behaviour as {@link Path.(iterdir:1)}. Uses `fs.opendir` when
 	 * available to avoid materialising the whole directory; otherwise falls back to buffered reads.
 	 * Throws {@link UnsupportedOperation} when `withFileTypes` is requested but not supported.
+	 *
+	 * @example Streaming a large media folder
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const media = new Path("/var/media");
+	 * for await (const entry of media.iterdirStream()) {
+	 *   if (await entry.isFile()) {
+	 *     console.log(entry.name);
+	 *   }
+	 * }
+	 * ```
 	 *
 	 * @privateRemarks
 	 *
@@ -771,6 +918,16 @@ export class Path extends PurePath {
 	 *
 	 * Synchronous counterpart of {@link Path.iterdirStream}. Uses `fs.opendirSync`
 	 * when available and falls back to `fs.readdirSync` otherwise.
+	 *
+	 * @example Iterating lazily in synchronous tooling
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const fixtures = new Path("./tests/fixtures");
+	 * for (const entry of fixtures.iterdirStreamSync()) {
+	 *   console.log(entry.toString());
+	 * }
+	 * ```
 	 *
 	 * @param options - Optional flags controlling the yielded value type.
 	 * @returns An iterable emitting {@link Path} objects or {@link https://nodejs.org/api/fs.html#class-fsdirent | Dirent}s.
@@ -909,6 +1066,15 @@ export class Path extends PurePath {
 	 * @param options - Options forwarded to Node's `fs.globSync`.
 	 * @returns Matching paths as {@link Path} objects.
 	 * @throws The {@link UnsupportedOperation} If `fs.globSync` is unavailable.
+	 *
+	 * @example Gathering TypeScript sources synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const repo = new Path("./src");
+	 * const matches = repo.globSync("**.ts");
+	 * console.log(matches.length);
+	 * ```
 	 */
 	globSync(pattern: string, options?: fs.GlobOptions): Path[] {
 		return this.globSyncInternal(pattern, options);
@@ -923,6 +1089,15 @@ export class Path extends PurePath {
 	 *
 	 * Matches CPython behaviour but relies on `fs.glob`. Throws {@link UnsupportedOperation} when the runtime
 	 * lacks glob support. Options are forwarded to the underlying Node implementation.
+	 *
+	 * @example Awaiting glob results for documentation
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const docs = new Path("./docs");
+	 * const pages = await docs.glob("**.md");
+	 * console.log(pages.map((page) => page.name));
+	 * ```
 	 *
 	 * @param pattern - Glob pattern interpreted relative to this path.
 	 * @param options - Options forwarded to Node's `fs.glob` implementation.
@@ -947,6 +1122,15 @@ export class Path extends PurePath {
 	 * @param pattern - Glob pattern to evaluate recursively.
 	 * @param options - Options forwarded to Node's glob implementation.
 	 * @returns Matching {@link Path} objects.
+	 *
+	 * @example Discovering translation files synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const repo = new Path("./packages");
+	 * const translations = repo.rglobSync("**.json");
+	 * console.log(translations.length);
+	 * ```
 	 */
 	rglobSync(pattern: string, options?: fs.GlobOptions): Path[] {
 		const parser = this.parser;
@@ -967,6 +1151,15 @@ export class Path extends PurePath {
 	 * Equivalent to prefixing the pattern with the recursive `"**"` segment and calling {@link Path.glob}.
 	 * `fs.glob` support.
 	 *
+	 * @example Recursively locating markdown pages
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const content = new Path("./content");
+	 * const docs = await content.rglob("**.mdx");
+	 * console.log(docs.length);
+	 * ```
+	 *
 	 * @param pattern - Glob pattern to evaluate recursively.
 	 * @param options - Options forwarded to Node's glob implementation.
 	 * @returns Promise resolving to matching {@link Path} objects.
@@ -985,6 +1178,14 @@ export class Path extends PurePath {
 	 *
 	 * @param encoding - Text encoding (defaults to `"utf8"`).
 	 * @returns File contents as a string.
+	 *
+	 * @example Loading configuration synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const config = new Path("./config.json");
+	 * const json = JSON.parse(config.readTextSync());
+	 * ```
 	 */
 	readTextSync(encoding: BufferEncoding = "utf8"): string {
 		return fs.readFileSync(this.toString(), { encoding });
@@ -993,6 +1194,14 @@ export class Path extends PurePath {
 	/**
 	 * Read the file as text using the provided encoding and return a promise
 	 * that resolves to the decoded contents of pointed-to file as a string.
+	 *
+	 * @example Parsing JSON asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cache = new Path("./.cache/state.json");
+	 * const data = JSON.parse(await cache.readText());
+	 * ```
 	 *
 	 * @param encoding - Text encoding (defaults to `"utf8"`).
 	 * @returns Promise resolving to the text contents.
@@ -1009,6 +1218,15 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.readBytes} but executes synchronously.
 	 *
 	 * @returns File contents as a {@link https://nodejs.org/api/buffer.html#class-buffer | Buffer}.
+	 *
+	 * @example Reading binary assets synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const logo = new Path("./assets/logo.png");
+	 * const buffer = logo.readBytesSync();
+	 * console.log(buffer.length);
+	 * ```
 	 */
 	readBytesSync(): Buffer {
 		return fs.readFileSync(this.toString());
@@ -1017,6 +1235,18 @@ export class Path extends PurePath {
 	/**
 	 * Read the file as raw bytes and return a promise that resolves to the
 	 * binary contents of the pointed-to file as a bytes object.
+	 *
+	 * @example Hashing a bundle asynchronously
+	 * ```ts
+	 * import { createHash } from "node:crypto";
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const bundle = new Path("./dist/app.js");
+	 * const hash = createHash("sha256")
+	 *   .update(await bundle.readBytes())
+	 *   .digest("hex");
+	 * console.log(hash);
+	 * ```
 	 *
 	 * @returns Promise resolving to the binary contents.
 	 */
@@ -1035,6 +1265,14 @@ export class Path extends PurePath {
 	 *
 	 * @param data - Text to persist.
 	 * @param encoding - Encoding to use (defaults to `"utf8"`).
+	 *
+	 * @example Writing CLI output synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const report = new Path("./report.txt");
+	 * report.writeTextSync("Report generated\n");
+	 * ```
 	 */
 	writeTextSync(data: string, encoding: BufferEncoding = "utf8"): void {
 		fs.writeFileSync(this.toString(), data, { encoding });
@@ -1048,6 +1286,14 @@ export class Path extends PurePath {
 	 * @param data - Text to persist.
 	 * @param encoding - Encoding to use (defaults to `"utf8"`).
 	 * @returns Promise that settles once the write completes.
+	 *
+	 * @example Persisting cache data asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cache = new Path("./.cache/state.json");
+	 * await cache.writeText(JSON.stringify({ refreshed: Date.now() }));
+	 * ```
 	 */
 	writeText(data: string, encoding: BufferEncoding = "utf8"): Promise<void> {
 		return toPromise(() => this.writeTextSync(data, encoding));
@@ -1063,6 +1309,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.writeBytes} but executes synchronously.
 	 *
 	 * @param data - Data to persist.
+	 *
+	 * @example Creating a binary cache synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const blob = new Path("./cache/blob.bin");
+	 * blob.writeBytesSync(Buffer.from([0xde, 0xad, 0xbe, 0xef]));
+	 * ```
 	 */
 	writeBytesSync(data: Buffer | Uint8Array): void {
 		fs.writeFileSync(this.toString(), data);
@@ -1075,6 +1329,15 @@ export class Path extends PurePath {
 	 *
 	 * @param data - Data to persist.
 	 * @returns Promise that settles once the write completes.
+	 *
+	 * @example Saving streamed content asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const archive = new Path("./dist/archive.zip");
+	 * const chunks = [Buffer.from("foo"), Buffer.from("bar")];
+	 * await archive.writeBytes(Buffer.concat(chunks));
+	 * ```
 	 */
 	writeBytes(data: Buffer | Uint8Array): Promise<void> {
 		return toPromise(() => this.writeBytesSync(data));
@@ -1089,6 +1352,15 @@ export class Path extends PurePath {
 	 *
 	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
 	 * @returns A Node {@link https://nodejs.org/api/fs.html#class-fsreadstream | fs.ReadStream} configured for the provided mode.
+	 *
+	 * @example Reading a template stream synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const template = new Path("./templates/email.html");
+	 * const stream = template.openSync("r");
+	 * stream.pipe(process.stdout);
+	 * ```
 	 */
 	openSync(mode = "r"): fs.ReadStream {
 		return magicOpen(this.toString(), { mode });
@@ -1104,6 +1376,15 @@ export class Path extends PurePath {
 	 *
 	 * @param mode - CPython-style mode string (for example `"r"`, `"wb"`).
 	 * @returns Promise resolving to a {@link https://nodejs.org/api/fs.html#class-fsreadstream | fs.ReadStream}.
+	 *
+	 * @example Streaming a log file asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const log = new Path("./logs/server.log");
+	 * const stream = await log.open("r");
+	 * stream.on("data", (chunk) => process.stdout.write(chunk));
+	 * ```
 	 */
 	open(mode = "r"): Promise<fs.ReadStream> {
 		return toPromise(() => this.openSync(mode));
@@ -1117,6 +1398,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.touch} but executes synchronously.
 	 *
 	 * @param options - File creation behaviour flags (`mode`, `existOk`).
+	 *
+	 * @example Creating a sentinel file synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const sentinel = new Path("./tmp/.ready");
+	 * sentinel.touchSync({ existOk: true });
+	 * ```
 	 */
 	touchSync(options?: { mode?: number; existOk?: boolean }): void {
 		const existOk = options?.existOk ?? true;
@@ -1143,6 +1432,14 @@ export class Path extends PurePath {
 	 *
 	 * @param options - File creation behaviour flags (`mode`, `existOk`).
 	 * @returns Promise that settles once the touch operation completes.
+	 *
+	 * @example Priming cache files asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cache = new Path("./.cache/state.json");
+	 * await cache.touch({ existOk: true });
+	 * ```
 	 */
 	touch(options?: { mode?: number; existOk?: boolean }): Promise<void> {
 		return toPromise(() => this.touchSync(options));
@@ -1156,6 +1453,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.mkdir} but executes synchronously.
 	 *
 	 * @param options - POSIX-style creation options (`parents`, `existOk`, `mode`).
+	 *
+	 * @example Preparing output directories synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const outDir = new Path("./dist/assets");
+	 * outDir.mkdirSync({ parents: true, existOk: true });
+	 * ```
 	 */
 	mkdirSync(options?: {
 		parents?: boolean;
@@ -1187,6 +1492,14 @@ export class Path extends PurePath {
 	 *
 	 * @param options - POSIX-style creation options (`parents`, `existOk`, `mode`).
 	 * @returns Promise that settles once the directory exists.
+	 *
+	 * @example Ensuring nested directories asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const assets = new Path("./public/assets/icons");
+	 * await assets.mkdir({ parents: true, existOk: true });
+	 * ```
 	 */
 	mkdir(options?: {
 		parents?: boolean;
@@ -1204,6 +1517,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.unlink} but executes synchronously.
 	 *
 	 * @param options - Deletion behaviour flags (`missingOk`).
+	 *
+	 * @example Cleaning up generated files synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const artifact = new Path("./dist/app.js");
+	 * artifact.unlinkSync({ missingOk: true });
+	 * ```
 	 */
 	unlinkSync(options?: { missingOk?: boolean }): void {
 		try {
@@ -1226,6 +1547,14 @@ export class Path extends PurePath {
 	 *
 	 * @param options - Deletion behaviour flags (`missingOk`).
 	 * @returns Promise that settles once the file is removed.
+	 *
+	 * @example Removing stale cache asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cache = new Path("./.cache/state.json");
+	 * await cache.unlink({ missingOk: true });
+	 * ```
 	 */
 	unlink(options?: { missingOk?: boolean }): Promise<void> {
 		return toPromise(() => this.unlinkSync(options));
@@ -1237,6 +1566,14 @@ export class Path extends PurePath {
 	 * @remarks
 	 *
 	 * Mirrors {@link Path.rmdir} but executes synchronously.
+	 *
+	 * @example Clearing an empty directory synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const tmp = new Path("./tmp/output");
+	 * tmp.rmdirSync();
+	 * ```
 	 */
 	rmdirSync(): void {
 		fs.rmdirSync(this.toString());
@@ -1250,6 +1587,14 @@ export class Path extends PurePath {
 	 * Uses Node's `fs.rmdir` to mirror CPython semantics.
 	 *
 	 * @returns Promise that settles once the directory is removed.
+	 *
+	 * @example Removing staging directories asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const staging = new Path("./build/staging");
+	 * await staging.rmdir();
+	 * ```
 	 */
 	rmdir(): Promise<void> {
 		return toPromise(() => this.rmdirSync());
@@ -1264,6 +1609,14 @@ export class Path extends PurePath {
 	 *
 	 * @param target - Destination path or string.
 	 * @returns A {@link Path} representing the destination.
+	 *
+	 * @example Rotating log files synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const current = new Path("./logs/app.log");
+	 * current.renameSync("./logs/app.log.1");
+	 * ```
 	 */
 	renameSync(target: PathLike): Path {
 		const destination =
@@ -1282,6 +1635,14 @@ export class Path extends PurePath {
 	 *
 	 * @param target - Destination path or string.
 	 * @returns Promise resolving to a {@link Path} representing the destination.
+	 *
+	 * @example Renaming build artifacts asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const artifact = new Path("./dist/app.tmp");
+	 * await artifact.rename("./dist/app.js");
+	 * ```
 	 */
 	rename(target: PathLike): Promise<Path> {
 		return toPromise(() => this.renameSync(target));
@@ -1296,6 +1657,14 @@ export class Path extends PurePath {
 	 *
 	 * @param target - Destination path or string.
 	 * @returns A {@link Path} representing the destination.
+	 *
+	 * @example Overwriting a manifest synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const manifest = new Path("./dist/manifest.json.new");
+	 * manifest.replaceSync("./dist/manifest.json");
+	 * ```
 	 */
 	replaceSync(target: PathLike): Path {
 		const destination =
@@ -1314,6 +1683,14 @@ export class Path extends PurePath {
 	 *
 	 * @param target - Destination path or string.
 	 * @returns Promise resolving to a {@link Path} representing the destination.
+	 *
+	 * @example Replacing assets atomically asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const staged = new Path("./public/app.css.stage");
+	 * await staged.replace("./public/app.css");
+	 * ```
 	 */
 	replace(target: PathLike): Promise<Path> {
 		return toPromise(() => this.replaceSync(target));
@@ -1342,6 +1719,14 @@ export class Path extends PurePath {
 	 * @param target - Destination path or string.
 	 * @param options - Behaviour flags for metadata preservation and symlink handling.
 	 * @returns The destination {@link Path}.
+	 *
+	 * @example Duplicating a directory tree synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const source = new Path("./templates");
+	 * source.copySync("./.cache/templates");
+	 * ```
 	 */
 	copySync(
 		target: PathLike,
@@ -1369,6 +1754,15 @@ export class Path extends PurePath {
 	 * @param target - Destination path or string.
 	 * @param options - Behaviour flags for metadata preservation and symlink handling.
 	 * @returns Promise resolving to the destination {@link Path}.
+	 *
+	 * @example Publishing build output asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const build = new Path("./build");
+	 * const publicDir = new Path("./public");
+	 * await build.copy(publicDir, { preserveMetadata: true });
+	 * ```
 	 */
 	copy(
 		target: PathLike,
@@ -1385,6 +1779,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.readlink} but executes synchronously.
 	 *
 	 * @returns A {@link Path} representing the symlink target.
+	 *
+	 * @example Inspecting a toolchain shim synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const shim = new Path("./node_modules/.bin/ts-node");
+	 * console.log(shim.readlinkSync().toString());
+	 * ```
 	 */
 	readlinkSync(): Path {
 		const resolved = fs.readlinkSync(this.toString());
@@ -1400,6 +1802,15 @@ export class Path extends PurePath {
 	 * {@link Path} instance.
 	 *
 	 * @returns Promise resolving to a {@link Path} representing the symlink target.
+	 *
+	 * @example Resolving symlinks asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const shim = new Path("./node_modules/.bin/esbuild");
+	 * const target = await shim.readlink();
+	 * console.log(target.toString());
+	 * ```
 	 */
 	readlink(): Promise<Path> {
 		return toPromise(() => this.readlinkSync());
@@ -1413,6 +1824,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.resolve} but executes synchronously.
 	 *
 	 * @returns A {@link Path} pointing to the resolved location.
+	 *
+	 * @example Normalising a relative workspace path synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const project = new Path("./docs");
+	 * console.log(project.resolveSync().toString());
+	 * ```
 	 */
 	resolveSync(): Path {
 		const resolved = nodepath.resolve(this.toString());
@@ -1428,6 +1847,16 @@ export class Path extends PurePath {
 	 * expansion.
 	 *
 	 * @returns Promise resolving to a {@link Path} pointing to the resolved location.
+	 *
+	 * @example Resolving user-provided input asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * async function loadFile(input: string) {
+	 *   const path = await new Path(input).resolve();
+	 *   return path.readText();
+	 * }
+	 * ```
 	 */
 	resolve(): Promise<Path> {
 		return toPromise(() => this.resolveSync());
@@ -1441,6 +1870,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.absolute} but executes synchronously.
 	 *
 	 * @returns An absolute {@link Path}.
+	 *
+	 * @example Converting a relative import synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const relative = new Path("../src/index.ts");
+	 * console.log(relative.absoluteSync().toString());
+	 * ```
 	 */
 	absoluteSync(): Path {
 		return this.isAbsolute() ? (this as Path) : this.resolveSync();
@@ -1455,6 +1892,14 @@ export class Path extends PurePath {
 	 * mirroring CPython's `absolute()` behavior.
 	 *
 	 * @returns Promise resolving to an absolute {@link Path}.
+	 *
+	 * @example Ensuring an absolute destination asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const target = new Path("./dist/output.txt");
+	 * console.log((await target.absolute()).toString());
+	 * ```
 	 */
 	absolute(): Promise<Path> {
 		return toPromise(() => this.absoluteSync());
@@ -1469,6 +1914,14 @@ export class Path extends PurePath {
 	 *
 	 * @returns A {@link Path} with user-home prefixes expanded.
 	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
+	 *
+	 * @example Resolving a home-relative config synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const config = new Path("~/.config/app/settings.json");
+	 * console.log(config.expandUserSync().toString());
+	 * ```
 	 */
 	expandUserSync(): Path {
 		const tail = this.tailParts();
@@ -1493,6 +1946,14 @@ export class Path extends PurePath {
 	 *
 	 * @returns Promise resolving to a {@link Path} with user-home prefixes expanded.
 	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
+	 *
+	 * @example Expanding a user directory asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const downloads = await new Path("~/Downloads").expandUser();
+	 * console.log(downloads.toString());
+	 * ```
 	 */
 	expandUser(): Promise<Path> {
 		return toPromise(() => this.expandUserSync());
@@ -1506,6 +1967,14 @@ export class Path extends PurePath {
 	 * Mirrors {@link Path.cwd} but executes synchronously.
 	 *
 	 * @returns A {@link Path} instance targeting the current working directory.
+	 *
+	 * @example Capturing the working directory synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cwd = Path.cwdSync();
+	 * console.log(cwd.toString());
+	 * ```
 	 */
 	static cwdSync(): Path {
 		const cwd = process.cwd();
@@ -1523,6 +1992,14 @@ export class Path extends PurePath {
 	 * parity with the synchronous constructor.
 	 *
 	 * @returns Promise resolving to a {@link Path} instance targeting the current working directory.
+	 *
+	 * @example Discovering the working directory asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const cwd = await Path.cwd();
+	 * console.log(cwd.toString());
+	 * ```
 	 */
 	static cwd(): Promise<Path> {
 		return toPromise(() => Path.cwdSync());
@@ -1535,6 +2012,14 @@ export class Path extends PurePath {
 	 *
 	 * @returns A {@link Path} instance targeting the user's home directory.
 	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
+	 *
+	 * @example Resolving the home directory synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const home = Path.homeSync();
+	 * console.log(home.toString());
+	 * ```
 	 */
 	static homeSync(): Path {
 		const home = nodeos.homedir();
@@ -1551,6 +2036,14 @@ export class Path extends PurePath {
 	 *
 	 * @returns Promise resolving to a {@link Path} instance targeting the user's home directory.
 	 * @throws The {@link https://nodejs.org/api/errors.html#class-error | Error} class When the home directory cannot be determined.
+	 *
+	 * @example Fetching the home directory asynchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const home = await Path.home();
+	 * console.log(home.toString());
+	 * ```
 	 */
 	static home(): Promise<Path> {
 		return toPromise(() => Path.homeSync());
@@ -1565,6 +2058,16 @@ export class Path extends PurePath {
 	 *
 	 * @param options - Control for traversal order (`topDown`).
 	 * @returns An array of {@link WalkTuple} entries.
+	 *
+	 * @example Summarising a tree synchronously
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const root = new Path("./dist");
+	 * for (const [dir, dirs, files] of root.walkSync()) {
+	 *   console.log(dir.toString(), dirs.length, files.length);
+	 * }
+	 * ```
 	 */
 	walkSync(options?: { topDown?: boolean }): WalkTuple[] {
 		const topDown = options?.topDown ?? true;
@@ -1593,6 +2096,22 @@ export class Path extends PurePath {
 	 *
 	 * @param options - Control for traversal order (`topDown`).
 	 * @returns Promise resolving to an array of {@link WalkTuple} entries.
+	 *
+	 * @example Copying a tree using walk
+	 * ```ts
+	 * import { Path } from "pathlib-ts";
+	 *
+	 * const source = new Path("./build");
+	 * const target = new Path("./public");
+	 * for (const [dir, , files] of await source.walk()) {
+	 *   const rel = dir.relativeTo(source, { walkUp: true });
+	 *   const outDir = target.joinpath(rel) as Path;
+	 *   await outDir.mkdir({ parents: true, existOk: true });
+	 *   for (const name of files) {
+	 *     await dir.joinpath(name).copy(outDir.joinpath(name));
+	 *   }
+	 * }
+	 * ```
 	 */
 	walk(options?: { topDown?: boolean }): Promise<WalkTuple[]> {
 		return toPromise(() => this.walkSync(options));

@@ -52,6 +52,14 @@ export { ErrnoError } from "./errors.js";
  * @param target - Path or writable stream receiving data.
  * @returns Promise that resolves when copying completes.
  * @throws The {@link ErrnoError} When the provided handles cannot be copied synchronously.
+ *
+ * @example Cloning a build artifact asynchronously
+ * ```ts
+ * import { copyFileObj } from "pathlib-ts/dist/os.js";
+ *
+ * await copyFileObj("./dist/index.html", "./preview/index.html");
+ * console.log("copied");
+ * ```
  */
 export async function copyFileObj(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -72,6 +80,13 @@ export async function copyFileObj(
  * @param source - Path or readable stream supplying data.
  * @param target - Path or writable stream receiving data.
  * @throws The {@link ErrnoError} When copying cannot be performed synchronously.
+ *
+ * @example Copying test fixtures synchronously
+ * ```ts
+ * import { copyFileObjSync } from "pathlib-ts/dist/os.js";
+ *
+ * copyFileObjSync("./fixtures/input.txt", "./fixtures/output.txt");
+ * ```
  */
 export function copyFileObjSync(
 	source: fs.ReadStream | NodeJS.ReadableStream | string,
@@ -129,6 +144,14 @@ export function copyFileObjSync(
  * @param options - Mode, encoding, and buffering preferences.
  * @returns A readable stream configured per the provided mode.
  * @throws The {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError | TypeError} When binary mode is combined with an encoding.
+ *
+ * @example Reading a configuration file as UTF-8 text
+ * ```ts
+ * import { magicOpen } from "pathlib-ts/dist/os.js";
+ *
+ * const stream = magicOpen("./config.toml", { mode: "r", encoding: "utf8" });
+ * stream.on("data", (chunk) => process.stdout.write(chunk));
+ * ```
  */
 export function magicOpen(
 	pathStr: string,
@@ -165,6 +188,14 @@ export function magicOpen(
  * @param source - Candidate source path.
  * @param target - Candidate destination path.
  * @throws The {@link ErrnoError} When the paths are identical or one is nested under the other.
+ *
+ * @example Guarding against destructive copies
+ * ```ts
+ * import { ensureDistinctPaths } from "pathlib-ts/dist/os.js";
+ *
+ * ensureDistinctPaths("./public", "./deploy/public");
+ * // throws if './deploy/public' already resides within './public'
+ * ```
  */
 export function ensureDistinctPaths(source: string, target: string): void {
 	const s = nodepath.resolve(source);
@@ -195,6 +226,16 @@ export function ensureDistinctPaths(source: string, target: string): void {
  * @param target - Target path-like object or descriptor.
  * @returns Promise that resolves when the paths are distinct.
  * @throws The {@link ErrnoError} When the two inputs resolve to the same file.
+ *
+ * @example Verifying temp file isolation asynchronously
+ * ```ts
+ * import { Path } from "pathlib-ts";
+ * import { ensureDifferentFiles } from "pathlib-ts/dist/os.js";
+ *
+ * const source = new Path("./cache/data.bin");
+ * const target = new Path("./cache/copy.bin");
+ * await ensureDifferentFiles(source, target);
+ * ```
  */
 export async function ensureDifferentFiles(
 	source: unknown,
@@ -215,6 +256,13 @@ export async function ensureDifferentFiles(
  * @param source - Source path-like object or descriptor.
  * @param target - Target path-like object or descriptor.
  * @throws The {@link ErrnoError} When the two inputs resolve to the same file.
+ *
+ * @example Preventing overwrite in build scripts
+ * ```ts
+ * import { ensureDifferentFilesSync } from "pathlib-ts/dist/os.js";
+ *
+ * ensureDifferentFilesSync("./dist/app.js", "./dist/app.js.tmp");
+ * ```
  */
 export function ensureDifferentFilesSync(
 	source: unknown,
@@ -277,6 +325,13 @@ export function ensureDifferentFilesSync(
  * @param target - Destination path to update.
  * @param options - Controls symlink dereferencing.
  * @returns Promise that resolves when metadata application completes.
+ *
+ * @example Cloning timestamps from a template file
+ * ```ts
+ * import { copyInfo } from "pathlib-ts/dist/os.js";
+ *
+ * await copyInfo("./templates/index.html", "./dist/index.html");
+ * ```
  */
 export async function copyInfo(
 	info: unknown,
@@ -297,6 +352,13 @@ export async function copyInfo(
  * @param info - Source object providing metadata (string path or object with `_path`).
  * @param target - Destination path to update.
  * @param options - Controls symlink dereferencing.
+ *
+ * @example Matching deployment metadata synchronously
+ * ```ts
+ * import { copyInfoSync } from "pathlib-ts/dist/os.js";
+ *
+ * copyInfoSync("./src/style.css", "./public/style.css");
+ * ```
  */
 export function copyInfoSync(
 	info: unknown,
@@ -356,6 +418,18 @@ export function copyInfoSync(
  * Instances wrap a filesystem path string and lazily cache `fs.statSync` / `fs.lstatSync` results. Methods
  * such as {@link PathInfoBase.exists} resolve once and reuse their cached value to avoid duplicate system calls
  * when {@link Path.info} is reused across operations.
+ *
+ * @example Reusing cached metadata during a build step
+ * ```ts
+ * import { Path } from "pathlib-ts";
+ *
+ * const entry = new Path("./dist/app.js");
+ * const info = entry.info; // PathInfoBase instance
+ *
+ * if (await info.exists()) {
+ *   console.log(await info.isFile());
+ * }
+ * ```
  *
  * @public
  */

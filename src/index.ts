@@ -19,6 +19,19 @@
  * 3. Globbing: Node's `fs.glob`/`fs.globSync` is used when available; otherwise the behaviour is implemented
  *    in userland.
  *
+ * @example Basic import and path composition
+ * ```ts
+ * import { Path } from "pathlib-ts";
+ *
+ * const dist = new Path("./dist");
+ * await dist.mkdir({ parents: true, existOk: true });
+ * const bundle = dist.joinpath("index.html");
+ *
+ * if (await bundle.exists()) {
+ *   console.log(`ready at ${await bundle.relativeTo(dist)}`);
+ * }
+ * ```
+ *
  * @see https://github.com/python/cpython/blob/3.14/Lib/pathlib/__init__.py
  */
 
