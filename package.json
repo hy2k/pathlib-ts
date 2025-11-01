@@ -3,6 +3,7 @@
 	"type": "module",
 	"author": "hy2k",
 	"description": "Async-first TypeScript port of CPython's pathlib",
+	"homepage": "https://pathlib-ts.hy2k.dev",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/hy2k/pathlib-ts"
