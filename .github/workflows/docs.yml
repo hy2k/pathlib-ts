@@ -1,0 +1,76 @@
+name: Build and deploy docs
+
+on:
+  workflow_run:
+    workflows:
+      - Build and publish
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch') ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           (github.event.workflow_run.head_branch == github.event.repository.default_branch ||
+            github.event.workflow_run.head_branch == '')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Use the release commit when invoked via workflow_run, otherwise fall back to the manual-run ref
+          ref: ${{ github.event.workflow_run.head_sha || github.ref || github.sha }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          build_dir: docs/dist
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install docs dependencies
+        run: bun install --frozen-lockfile
+        working-directory: docs
+
+      - name: Generate API documentation
+        run: bun run generate:api
+        working-directory: docs
+
+      - name: Build docs
+        run: bun run build
+        working-directory: docs
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
