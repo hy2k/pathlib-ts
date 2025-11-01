@@ -31,8 +31,6 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
-        with:
-          build_dir: docs/dist
 
       - name: Setup Node
         uses: actions/setup-node@v6
