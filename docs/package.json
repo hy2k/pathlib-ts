@@ -1,15 +1,18 @@
 {
-	"name": "docs",
+	"name": "pathlib-ts-docs",
 	"private": true,
 	"version": "0.0.0",
 	"description": "Documentation site for pathlib-ts",
 	"devDependencies": {
 		"@astrojs/starlight": "latest",
+		"@microsoft/api-documenter": "^7.27.3",
+		"@microsoft/api-extractor": "^7.53.3",
 		"astro": "latest",
 		"typescript": "^5.6.3"
 	},
 	"scripts": {
 		"build": "bun --bun astro build",
-		"dev": "bun --bun astro dev"
+		"dev": "bun --bun astro dev",
+		"generate:api": "bun --bun ./generate-api.ts"
 	}
 }
